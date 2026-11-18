@@ -10,6 +10,9 @@ export const RIGHT_EDGE = 0, RIGHT_COLLAPSED_W = 44;
 // 12th C3: the App places the attached right window 43px left of the x asked for (asked x 1152 -> real left edge 1109, measured 10b; the right edge is x+width = the screen's edge, so
 // a shift and a frame give the same number). Popups keep clear of (asked x - RIGHT_WIN_FRAME). The ONE place for the number; popups end RIGHT_POP_GAP left of that edge.
 export const RIGHT_WIN_FRAME = 43, RIGHT_POP_GAP = 8;
+// The terminal's full-screen switch (shared "hakoniwa.termFull"): the right window's terminal (an agent's Terminal tab, or a shell picked from the left list) and the
+// Kanban's terminal window cover the whole App window while it is on. Pressed again (or the window closed): back to its normal place.
+export const termFullOn = (shared) => { try { return !!shared("hakoniwa.termFull")?.on; } catch { return false; } };
 // 9th Z3 / 14th D2: where each header chip starts at 1920px wide (measured in the 17:23 picture). The command path (no pointer) uses it for the chip lists and the inbox.
 export const CHIP_X = { blocked: 240, working: 392, done: 527, idle: 691 };
 // 15th E3: the chips' widths move with the digits (and the words). The band measures each chip's width and the command path adds them up from the first chip's left (CHIP_X.blocked),

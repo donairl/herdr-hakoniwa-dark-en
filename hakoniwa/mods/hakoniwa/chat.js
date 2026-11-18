@@ -7,7 +7,7 @@ import { paint } from "./palette.js"; // light -> dark UI colours (follows the a
 // code fell back to left.width+268 (= 2188 wide): the right window was asked for x=1313 w=875, i.e. 268px past the screen edge (bubbles / the send button cut at x=1920). Never import `window` from "herdr" here.
 const vpSize = () => { try { const v = globalThis.window?.viewport_size?.(); return v && v.width > 0 ? v : null; } catch { return null; } };
 const winBounds = () => { try { const b = globalThis.window?.bounds?.(); return b && b.width > 0 ? { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } : null; } catch { return null; } };
-import { rightOverlayBox, RIGHT_EDGE, RIGHT_COLLAPSED_W, RIGHT_WIN_FRAME, STATE, ROOM, P, dot, chip, badge, clock, ago, platform, platformIcon, stateOf, blockedText } from "./common.js";
+import { rightOverlayBox, RIGHT_EDGE, RIGHT_COLLAPSED_W, RIGHT_WIN_FRAME, termFullOn, STATE, ROOM, P, dot, chip, badge, clock, ago, platform, platformIcon, stateOf, blockedText } from "./common.js";
 import { fitTail, unwrapHc } from "./life.js";
 import { tabFor } from "./detail.js";
 import { headHeight } from "./ui-rules.js";
@@ -300,29 +300,33 @@ export class ChatPart {
     if (pick) { // ★72-3: a terminal picked from the left list (a shell, or an agent's terminal): the real terminal in the same window, no detail part
       const vp0 = vpSize();
       const vw0 = vp0?.width > 0 ? vp0.width : left.width + 268, vh0 = vp0?.height > 0 ? vp0.height : left.height + 60;
-      const col0 = !!this.rightCollapsed, b0 = rightOverlayBox(vw0, vh0, 60, col0 ? RIGHT_COLLAPSED_W : (this.rightW ?? Math.round(left.width * 0.46)), this.rightW ? 0.6 : 0.4, RIGHT_EDGE), W0 = col0 ? RIGHT_COLLAPSED_W : b0.width, H0 = Math.min(b0.height, Math.max(240, Math.round(left.height))), sig0 = `pick|${pick.address}|${pick.name ?? ""}|${W0}|${H0}|${col0}`; // ★103-3 attached to the right edge; ★103-4 the folded strip
+      const col0 = !!this.rightCollapsed, b0 = rightOverlayBox(vw0, vh0, 60, col0 ? RIGHT_COLLAPSED_W : (this.rightW ?? Math.round(left.width * 0.46)), this.rightW ? 0.6 : 0.4, RIGHT_EDGE), full0 = !col0 && termFullOn(shared), W0 = col0 ? RIGHT_COLLAPSED_W : full0 ? Math.round(vw0) : b0.width, H0 = full0 ? Math.round(vh0) : Math.min(b0.height, Math.max(240, Math.round(left.height))), sig0 = `pick|${pick.address}|${pick.name ?? ""}|${W0}|${H0}|${col0}|${full0}`; // ★103-3 attached to the right edge; ★103-4 the folded strip
       if (this.termKey === sig0) { this.measuredBox(); return true; }
       try {
-        this.termId = openOverlay({ kind: "window", key: "hakoniwa-term", width: W0, height: H0, at: { x: col0 ? b0.x + b0.width - W0 : b0.x, y: b0.y }, layout: col0 ? { type: "block", content: { mod: "hakoniwa", props: { role: "detail", collapsed: true, name: pick.name ?? pick.address } } } : { type: "column", children: [
+        const x0 = full0 ? 0 : col0 ? b0.x + b0.width - W0 : b0.x, y0 = full0 ? 0 : b0.y;
+        this.termId = openOverlay({ kind: "window", key: "hakoniwa-term", width: W0, height: H0, at: { x: x0, y: y0 }, layout: col0 ? { type: "block", content: { mod: "hakoniwa", props: { role: "detail", collapsed: true, name: pick.name ?? pick.address } } } : { type: "column", children: [
           { type: "block", size: { px: 52 }, content: { mod: "hakoniwa", props: { role: "pick-head", name: pick.name ?? pick.address } } }, // ★81 a thin head: name, シェル, 折りたたむ, × 閉じる (★103-4: 52px, buttons 32px+)
           { type: "block", content: { terminal: pick.address } }] } });
-        this.termKey = sig0; this.termBox = { x: col0 ? b0.x + b0.width - W0 : b0.x, y: b0.y, w: W0, h: H0, frame: RIGHT_WIN_FRAME }; setShared("hakoniwa.termBox", this.termBox); return true;
+        this.termKey = sig0; this.termBox = { x: x0, y: y0, w: W0, h: H0, frame: full0 ? 0 : RIGHT_WIN_FRAME }; setShared("hakoniwa.termBox", this.termBox); return true;
       } catch (e) { this.termKey = null; this.termFail = String(e); this.termPick = null; return false; }
     }
     if (!want) {
       if (this.termKey) { try { closeOverlay(this.termId); } catch {} this.termKey = null; this.termId = null; }
       this.termBox = null; setShared("hakoniwa.termBox", null); this.apKeep = null;
+      if (termFullOn(shared)) setShared("hakoniwa.termFull", { on: false, at: Date.now() }); // the window is gone: the next one opens in its normal place
       return false;
     }
     const vp = vpSize();
     const vw = vp?.width > 0 ? vp.width : left.width + 268, vh = vp?.height > 0 ? vp.height : left.height + 60; // the window's real size (the office's own size + the sidebar only as a fallback)
-    const colW = !!this.rightCollapsed, bx = rightOverlayBox(vw, vh, 60, colW ? RIGHT_COLLAPSED_W : (this.rightW ?? Math.round(left.width * 0.46)), this.rightW ? 0.6 : 0.4, RIGHT_EDGE), W = colW ? RIGHT_COLLAPSED_W : bx.width, H = Math.min(bx.height, Math.max(240, Math.round(left.height))); // ★103-3 attached; ★103-4 folded
+    const colW = !!this.rightCollapsed, bx = rightOverlayBox(vw, vh, 60, colW ? RIGHT_COLLAPSED_W : (this.rightW ?? Math.round(left.width * 0.46)), this.rightW ? 0.6 : 0.4, RIGHT_EDGE), W0w = colW ? RIGHT_COLLAPSED_W : bx.width; let W = W0w, H = Math.min(bx.height, Math.max(240, Math.round(left.height))); // ★103-3 attached; ★103-4 folded
     if (this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "chat"; } // ★84 another person: the first tab again; ★106 V1: the conversation
-    const kidsN = this.familyRows(want, list).length - 1, tab = tabFor(this.detailTab, true, kidsN), topH = headHeight(W), ap = tab === "chat" && want.status === "blocked", apH = ap ? this.apHold(want.id, W, this.apNeed(want, W)) : (this.apHold(null), 0), sig = `${want.id}|${want.address}|${topH}|${tab}|${W}|${H}|${colW}|${ap ? "ap" + apH : ""}`; // 13th D1: ap = a person waiting for approval gets a card block above the input (the window is opened again when it starts / ends) // ★84 the head is a fixed height from the width; the tab is in the key (the window is opened again)
+    const kidsN0 = this.familyRows(want, list).length - 1, full = !colW && tabFor(this.detailTab, true, kidsN0) === "terminal" && termFullOn(shared);
+    if (full) { W = Math.round(vw); H = Math.round(vh); }
+    const kidsN = kidsN0, tab = tabFor(this.detailTab, true, kidsN), topH = headHeight(W), ap = tab === "chat" && want.status === "blocked", apH = ap ? this.apHold(want.id, W, this.apNeed(want, W)) : (this.apHold(null), 0), sig = `${want.id}|${want.address}|${topH}|${tab}|${W}|${H}|${colW}|${full}|${ap ? "ap" + apH : ""}`; // 13th D1: ap = a person waiting for approval gets a card block above the input (the window is opened again when it starts / ends) // ★84 the head is a fixed height from the width; the tab is in the key (the window is opened again)
     if (this.termKey === sig) { this.measuredBox(); return true; }
     // 34th 33-A4 (office-fix39b): what changed in the key at each re-open is written to right-edge-diag.json ("window-reopen": n, changed, from, to). An apH-only change while the card is
     // already there (the ask text got longer) re-opens at most APH_REOPEN_MAX times per waiting episode (the window vanishes for a frame each time); a shrink never re-opens (apHold keeps the larger).
-    const parts = { id: want.id, address: want.address ?? null, topH, tab, W, H, colW, ap: ap ? 1 : 0, apH }, prev = this.termParts?.key === this.termKey ? this.termParts : null;
+    const parts = { id: want.id, address: want.address ?? null, topH, tab, W, H, colW, full, ap: ap ? 1 : 0, apH }, prev = this.termParts?.key === this.termKey ? this.termParts : null;
     if (prev) {
       const changed = Object.keys(parts).filter((k) => parts[k] !== prev[k]);
       if (changed.length === 1 && changed[0] === "apH" && ap && prev.ap === 1) { if ((this.apReopenN ?? 0) >= APH_REOPEN_MAX) { this.measuredBox(); return true; } this.apReopenN = (this.apReopenN ?? 0) + 1; }
@@ -333,14 +337,15 @@ export class ChatPart {
       if (changed.includes("ap") || changed.includes("apH")) this.traceApprove?.({ ev: "sync-reopen", id: want.id, changed, ap: parts.ap, apH: parts.apH, status: want.status, since: want.since ?? null }); // 46th 44-L1
     } else { this.apReopenN = 0; this.reopenN = 0; if (ap) this.traceApprove?.({ ev: "sync-open", id: want.id, ap: 1, apH, status: want.status, since: want.since ?? null }); } // 46th 44-L1: a window first opened for a person who already waits
     try {
-      this.termId = openOverlay({ kind: "window", key: "hakoniwa-term", width: W, height: H, at: { x: colW ? bx.x + bx.width - W : bx.x, y: bx.y },
+      const wx = full ? 0 : colW ? bx.x + bx.width - W : bx.x, wy = full ? 0 : bx.y;
+      this.termId = openOverlay({ kind: "window", key: "hakoniwa-term", width: W, height: H, at: { x: wx, y: wy },
         layout: colW ? { type: "block", content: { mod: "hakoniwa", props: { role: "detail", collapsed: true, id: want.id, name: want.name, face: this.faceFile(want) ?? null } } } : { type: "column", children: [
           { type: "block", size: { px: topH }, content: { mod: "hakoniwa", props: { role: "detail", paneH: H, paneW: W, tab, id: want.id, name: want.name, color: want.color, face: this.faceFile(want) ?? null } } }, // the head + tabs
           { type: "block", content: tab === "terminal" ? { terminal: want.address } : { mod: "hakoniwa", props: { role: tab === "chat" ? "chat-body" : "tree-body", id: want.id, name: want.name ?? "", source: want.source, ap: ap ? 1 : 0, apH } } }, // 33rd 32-Z1: ap / apH = the approval block is in this window (a copy that has not read the list yet sizes itself by them)
           ...(ap ? [{ type: "block", size: { px: apH + APPROVE_GAP }, content: { mod: "hakoniwa", props: { role: "chat-approve", id: want.id, name: want.name ?? "", source: want.source, ap: 1 } } }] : []), // 17c: the one approval block; its height carries the blank strip above the card (detail.js approveBlockView pt), no second block
           ...(tab === "chat" ? [{ type: "block", size: { px: 72 + (ap ? COMPOSER_HINT : 0) }, content: { mod: "hakoniwa", props: { role: "chat-input", id: want.id, name: want.name ?? "", source: want.source, address: want.address ?? null, ap: ap ? 1 : 0 } } }] : [])] } }); // the body: the real terminal, or the conversation / tree; X1 (★108): the input is a block of its own (a fixed 72px at the window's bottom), not a flex child that may be pushed out
-      this.termKey = sig; this.termParts = { key: sig, ...parts }; this.termBox = { x: colW ? bx.x + bx.width - W : bx.x, y: bx.y, w: W, h: H, frame: RIGHT_WIN_FRAME }; setShared("hakoniwa.termBox", this.termBox); // ★37-1 where the window is (the wheel over it is the window's); 12th C3: x is the x ASKED; the real left edge is x - frame
-      this.rightDiag("window-open", { requested: { width: W, height: H, at: { x: this.termBox.x, y: bx.y } }, windowLeft: this.termBox.x - RIGHT_WIN_FRAME, frame: RIGHT_WIN_FRAME, vp: { w: vw, h: vh }, usedFallbackSize: !(vp?.width > 0) });
+      this.termKey = sig; this.termParts = { key: sig, ...parts }; this.termBox = { x: wx, y: wy, w: W, h: H, frame: full ? 0 : RIGHT_WIN_FRAME }; setShared("hakoniwa.termBox", this.termBox); // ★37-1 where the window is (the wheel over it is the window's); 12th C3: x is the x ASKED; the real left edge is x - frame
+      this.rightDiag("window-open", { requested: { width: W, height: H, at: { x: this.termBox.x, y: wy } }, windowLeft: this.termBox.x - RIGHT_WIN_FRAME, frame: RIGHT_WIN_FRAME, vp: { w: vw, h: vh }, usedFallbackSize: !(vp?.width > 0) });
       return true;
     } catch (e) { this.termKey = null; this.termFail = String(e); return false; }
   }
@@ -476,12 +481,17 @@ export class ChatPart {
 
   // The Kanban's "Open terminal": agent.focus only moved the focus to a pane this layout never shows (nothing happened). The chat window is
   // replaced by a window that holds the agent's real terminal under a thin head ("chat-term-head": Chat goes back, Close shuts it). One window at a time (hakoniwa.chatWin).
-  openTermWin(p) {
+  // The full-screen switch of a terminal (icons fullscreen / fullscreen-exit). `fn` replaces the shared switch (the Kanban window opens itself again).
+  fullBtn(id, on = termFullOn(shared), fn = null) {
+    return iconBtn(id, on ? "fullscreen-exit" : "fullscreen", fn ?? (() => setShared("hakoniwa.termFull", { on: !on, at: Date.now() })),
+      { size: 36, isize: 20, tip: on ? "Exit full screen: the terminal goes back to its place" : "Full screen: the terminal covers the whole window" });
+  }
+  openTermWin(p, full = false) {
     const prev = shared("hakoniwa.chatWin");
     if (prev != null) { try { closeOverlay(prev); } catch {} }
     const keep = { id: p.id, name: p.name, source: p.source, address: p.address, app: p.app, model: p.model, color: p.color };
-    const id = openOverlay({ kind: "window", width: 760, height: 560, layout: { type: "column", children: [
-      { type: "block", size: { px: 46 }, content: { mod: "hakoniwa", props: { role: "chat-term-head", ...keep } } },
+    const id = openOverlay({ kind: "window", width: full ? 1 : 760, height: full ? 1 : 560, ...(full ? { at: { x: 0, y: 0 } } : {}), layout: { type: "column", children: [
+      { type: "block", size: { px: 46 }, content: { mod: "hakoniwa", props: { role: "chat-term-head", ...keep, full: full ? 1 : 0 } } },
       { type: "block", content: { terminal: p.address } }] } });
     setShared("hakoniwa.chatWin", id ?? null);
   }
@@ -495,6 +505,7 @@ export class ChatPart {
       .child(badge(room.title, room.color, true))
       .child(platformIcon(p, 14))
       .child(div().flex_1().min_w(0).truncate().text_size(13).font_weight(700).text_color(P.ink).child(p.name ?? p.id ?? ""))
+      .child(this.fullBtn("chat-term-full", !!p.full, () => this.openTermWin(p, !p.full)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()))
       .child(btn("chat-term-chat", "Chat", () => this.openChat({ id: p.id, name: p.name, source: p.source, address: p.address, app: p.app, model_label: p.model, color: p.color })))
       .child(btn("chat-term-close", "Close", close));
   }
@@ -506,6 +517,7 @@ export class ChatPart {
     return h_flex().id("pick-head-root").size_full().px(14).gap(10).items_center().bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).border_b(1).border_color(P.line)
       .child(div().flex_1().min_w(0).truncate().text_size(16).font_weight(700).text_color(P.ink).child(p.name ?? ""))
       .child(div().flex_none().px(8).py(3).rounded(6).bg(paint("#e7e5df")).text_size(13).font_weight(700).text_color(paint("#7a766b")).child("Shell"))
+      .child(this.fullBtn("pick-full"))
       .child(iconBtn("pick-fold", "right", () => setShared("hakoniwa.rcollapse", { on: true, at: Date.now() }), { size: 36, isize: 20 })) // ★103-4 fold to the edge
       .child(iconBtn("pick-close", "x", () => { setShared("hakoniwa.close", { at: Date.now() }); }, { size: 36, isize: 20 })); // ★104 U13: × as an icon, like the agent head
   }

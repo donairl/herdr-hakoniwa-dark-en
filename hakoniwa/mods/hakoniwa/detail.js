@@ -99,6 +99,7 @@ export class DetailPart {
           .hover((s) => s.bg(paint("#FDE8E8"))).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.askEnd(a, list); })
           .child(icon("trash", 16, paint("#d6455d"))).child(div().text_size(14).font_weight(700).text_color(paint("#d6455d")).child("End")))
         .child(div().id("end-gap").flex_none().w(END_GAP)))
+      .when(opts.tab === "terminal" && !!opts.hasTerminal && typeof this.fullBtn === "function", (e) => e.child(this.fullBtn("full-btn")))
       .child(iconBtn("fold-btn", "right", () => slide.collapse?.(true), { size: BTN, isize: BICON, tip: "Fold the window: folds it into a thin strip at the right edge (\"Open\" brings it back). The agent keeps running" })) // 26th S4: slide.collapse only sets hakoniwa.rcollapse (the window's width); nothing is sent to the agent
       //// ★103-4 fold to the right edge (the arrow points where it goes); 13th D5: tooltip
       .child(iconBtn("close-btn", "x", (cx) => slide.close(cx), { size: BTN, isize: BICON, tip: "Close the window: only closes this right window. The agent keeps running and stays in the list" })); // 26th S4: slide.close only asks the App to close the window (hakoniwa.close); 「終える」 is the one that ends the session
