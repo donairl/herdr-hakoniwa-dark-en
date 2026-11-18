@@ -42,12 +42,12 @@ switch (event) {
     break;
   case "permissionrequest":
     state = "blocked";
-    opts = { kind: "permission", msg: "承認待ち" };
+    opts = { kind: "permission", msg: "Needs approval" };
     break;
   case "notification":
     if (notifType.includes("permission")) {
       state = "blocked";
-      opts = { kind: "permission", msg: "承認待ち" };
+      opts = { kind: "permission", msg: "Needs approval" };
     }
     break;
   case "stop":

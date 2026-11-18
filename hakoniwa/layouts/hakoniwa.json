@@ -2,15 +2,16 @@
   "id": "root",
   "type": "column",
   "titlebar": "none",
-  "theme": "paper",
+  "theme": {
+    "light": "paper",
+    "dark": "graphite"
+  },
   "ui_font": "Geist",
   "font_size": 13,
-  "background": "#f3efe7",
+  "background": "chrome",
   "colors": {
-    "background": "#ffffff",
-    "foreground": "#303746",
-    "border": "#e5e7ec",
-    "accent": "#7465db"
+    "accent": "#7465db",
+    "accent_foreground": "#ffffff"
   },
   "terminal_padding": [
     12,
@@ -65,7 +66,7 @@
           },
           "hidden": true,
           "resizable": false,
-          "background": "#fbf8f1",
+          "background": "canvas",
           "gap": 0,
           "children": [
             {

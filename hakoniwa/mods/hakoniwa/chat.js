@@ -2,6 +2,7 @@
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex, InputState } from "gpui-base";
 import { appHome, closeOverlay, exec, openOverlay, props, readTextFile, run, setShared, settings, shared, writeTextFile } from "herdr";
+import { paint } from "./palette.js"; // light -> dark UI colours (follows the appearance)
 // 13th B1/B6: `window` here is the ambient gpui Window (viewport_size / bounds). fix11b imported `window` from "herdr" (a function: titlebar info) which hid it, so viewport_size() threw on every call and the
 // code fell back to left.width+268 (= 2188 wide): the right window was asked for x=1313 w=875, i.e. 268px past the screen edge (bubbles / the send button cut at x=1920). Never import `window` from "herdr" here.
 const vpSize = () => { try { const v = globalThis.window?.viewport_size?.(); return v && v.width > 0 ? v : null; } catch { return null; } };
@@ -17,7 +18,7 @@ import { endAgent, endQuestion, runAgentOps } from "./actions.js";
 
 // Long unbroken text (paths, commands) gets break points so it wraps inside the panel instead of running off it.
 const ZW = "​";
-const imgLine = (t) => String(t ?? "").replace(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g, (_m, u) => `画像: ${String(u).split(/[\\/]/).pop().split("?")[0] || u}`); // a picture in Markdown: one short line, no thumbnail
+const imgLine = (t) => String(t ?? "").replace(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g, (_m, u) => `Image: ${String(u).split(/[\\/]/).pop().split("?")[0] || u}`); // a picture in Markdown: one short line, no thumbnail
 const soft = (t) => imgLine(String(t ?? "")).replace(/([/\\_,&|;=-])(?=\S)/g, "$1" + ZW).replace(/(\S{24})(?=\S)/g, "$1" + ZW);
 
 // 17th E4 (office-fix17b): the card measured on the real window (12th, 1920x1152): 126 px high with a one-line ask (the block was 176: ~42 px of empty paper under the card).
@@ -66,7 +67,7 @@ function tailOf(m, width, avail, force) {
   for (let i = lines.length - 1; i >= 0; i--) { const k = Math.max(1, Math.ceil(convWidthOf(lines[i]) / inner)); if (keep.length && n + k > use) break; keep.unshift(lines[i]); n += k; }
   if (keep.length === 1 && n > use) { const t = [...keep[0]]; keep[0] = t.slice(Math.max(0, t.length - Math.floor(inner / CONV.narrow) * use)).join(""); n = use; }
   const left = Math.max(1, total - n);
-  return { ...m, text: `… 前の ${left} 行\n${keep.join("\n")}` };
+  return { ...m, text: `… ${left} earlier line${left === 1 ? "" : "s"}\n${keep.join("\n")}` };
 }
 export function fitConversation(msgs, width, height, back = 0) {
   const all = Array.isArray(msgs) ? msgs : [], budget = Math.max(CONV.line * 4, Number(height) || 0) * (1 + Math.max(0, back | 0)) - CONV.older;
@@ -86,8 +87,8 @@ export class ChatPart {
     let seed = null; try { const cc = shared("hakoniwa.chatcache"), pid = (this.bodyProps?.() ?? props())?.id; if (cc?.data && pid && cc.id === pid && Date.now() - (cc.at ?? 0) < 120000) { seed = cc.data; this.seedBlocked = cc.st === "blocked"; } } catch {} // 41st 39-G1 (office-fix46a): st = whether the person waited for approval when that screen was read
     this.chat = { loading: true, data: seed };
     if (seed && (this.bodyProps?.() ?? props())?.role === "chat-body") this.traceChat({ ev: "seed", id: (this.bodyProps?.() ?? props())?.id, seedBlocked: !!this.seedBlocked, seedAt: shared("hakoniwa.chatcache")?.at ?? null });
-    try { this.msgState = InputState.new({ placeholder: "メッセージ、またはコマンドを入力…" }); } catch { this.msgState = null; } // ★105 R8 the composer's input (made here, never in render)
-    try { this.rejectState = InputState.new({ placeholder: "却下の理由（任意）…" }); } catch { this.rejectState = null; } // 24th Q2: the same input while the person waits for approval (InputState has no way to change a placeholder later, so a second state)
+    try { this.msgState = InputState.new({ placeholder: "Type a message or a command…" }); } catch { this.msgState = null; } // ★105 R8 the composer's input (made here, never in render)
+    try { this.rejectState = InputState.new({ placeholder: "Reason for rejecting (optional)…" }); } catch { this.rejectState = null; } // 24th Q2: the same input while the person waits for approval (InputState has no way to change a placeholder later, so a second state)
     this.chatStartAt = Date.now(); // 43rd 41-I4: when this copy began (detail.js draws 「読み込み中…」 instead of the start-up banner for its first ~3 s while the screen is not yet a conversation)
     // 43rd 41-I2 (office-fix48a): a copy opened FOR a waiting person (props ap === 1, a seed read while it waited, or the card block itself) is a new copy that never saw the switch to "waiting", so the
     // watch below never logs blocked-in for it and the buttons came ~3.5 s late. It reads the state, the screen and the card's options once, at its start (logged as blocked-in with fromInit).
@@ -181,27 +182,27 @@ export class ChatPart {
   chatView() {
     const p = props(), d = this.chat?.data, room = ROOM[p.source] ?? { title: p.source, color: P.muted };
     const btn = (id, label, fn) => div().id(id).flex_none().px(9).py(4).rounded(5).border(1).border_color(P.line)
-      .bg(P.white).text_size(11).text_color(P.ink).cursor_pointer().hover((s) => s.bg("#f1f3f6")).on_click(fn).child(label);
-    const head = h_flex().flex_none().h(46).px(14).gap(8).items_center().bg("#fafbfc").border_b(1).border_color(P.line)
+      .bg(P.white).text_size(11).text_color(P.ink).cursor_pointer().hover((s) => s.bg(paint("#f1f3f6"))).on_click(fn).child(label);
+    const head = h_flex().flex_none().h(46).px(14).gap(8).items_center().bg(paint("#fafbfc")).border_b(1).border_color(P.line)
       .child(badge(room.title, room.color, true))
       .child(platformIcon(p, 14))
       .child(v_flex().flex_1().min_w(0)
         .child(div().text_size(13).font_weight(700).text_color(P.ink).truncate().child(p.name ?? p.id))
         .child(h_flex().gap(4).items_center().child(chip(p.color ?? P.muted, 8))
-          .child(div().text_size(10).text_color(P.muted).child(p.model ?? "モデル不明"))))
-      .child(btn("chat-reload", "再読込", (_e, cx) => cx.spawn(async (cx) => this.loadChat(cx))))
-      .when(p.source === "app", (el) => el.child(btn("chat-open", "端末を開く", () => run("agent.focus", { terminal: p.address }))))
-      .child(btn("chat-close", "閉じる", () => closeOverlay(p.overlay)));
+          .child(div().text_size(10).text_color(P.muted).child(p.model ?? "Unknown model"))))
+      .child(btn("chat-reload", "Reload", (_e, cx) => cx.spawn(async (cx) => this.loadChat(cx))))
+      .when(p.source === "app", (el) => el.child(btn("chat-open", "Open terminal", () => run("agent.focus", { terminal: p.address }))))
+      .child(btn("chat-close", "Close", () => closeOverlay(p.overlay)));
     let body;
-    if (this.chat?.loading && !d) body = div().p(16).text_size(12).text_color(P.muted).child("読み込み中…");
-    else if (d?.error && !(d.messages?.length || d.screen)) body = div().p(16).text_size(12).text_color("#d6455d").child(String(d.error ?? ""));
+    if (this.chat?.loading && !d) body = div().p(16).text_size(12).text_color(P.muted).child("Loading…");
+    else if (d?.error && !(d.messages?.length || d.screen)) body = div().p(16).text_size(12).text_color(paint("#d6455d")).child(String(d.error ?? ""));
     else if (d?.kind === "screen") body = div().p(12).text_size(11).text_color(P.ink)
-      .font_family(settings().font_family ?? "Consolas").child(String(stripTerminalFrame(d.screen).text || "（画面が空です）")); // 28th 27-U1/U2
+      .font_family(settings().font_family ?? "Consolas").child(String(stripTerminalFrame(d.screen).text || "(the screen is empty)")); // 28th 27-U1/U2
     else body = v_flex().gap(8).p(12).children((d?.messages ?? []).slice().reverse().map((m, i) => this.message(m, i)));
     return v_flex().id("chat-root").size_full().bg(P.white)
       .child(head)
-      .child(div().flex_none().px(14).py(4).text_size(10).text_color(P.muted).bg("#fcfcfd").border_b(1).border_color(P.line)
-        .child(d?.kind === "screen" ? "会話の記録が無いため、端末の画面を表示しています" : "新しい順（上が最新）"))
+      .child(div().flex_none().px(14).py(4).text_size(10).text_color(P.muted).bg(paint("#fcfcfd")).border_b(1).border_color(P.line)
+        .child(d?.kind === "screen" ? "No conversation record, so the terminal screen is shown" : "Newest first (latest on top)"))
       .child(div().id("chat-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body));
   }
 
@@ -381,15 +382,15 @@ export class ChatPart {
     const sig = `${a.id}|${a.status}|${a.since}`;
     if (this.panel?.sig === sig || this.panel?.loading || !this.feed.config) return;
     if (shared("hakoniwa.demo") || this.feed.config?.demo) { // demo: nothing to read
-      const now = Date.now(), nm = a.name || "作業";
+      const now = Date.now(), nm = a.name || "the task";
       const min = (n) => now - n * 60000;
-      const rows = [{ role: "user", at: min(12), text: `「${nm}」を進めてください` },
-        { role: "assistant", at: min(11), text: "まず関連するファイルを確認します。" },
-        { role: "tool", at: min(10), text: "関連ファイルを確認" }];
-      if (a.status === "blocked") rows.push({ role: "assistant", at: min(4), text: `次の操作を実行してよいですか: ${a.blocked_msg || "確認が必要です"}` });
-      else if (a.status === "done") rows.push({ role: "tool", at: min(3), text: "テストを実行" }, { role: "assistant", at: min(2), text: "作業が終わりました。結果を報告します。" });
-      else if (a.status === "working") rows.push({ role: "assistant", at: min(5), text: "修正を進めています。終わったらテストを流します。" }, { role: "tool", at: min(2), text: "ファイルを編集" });
-      else rows.push({ role: "assistant", at: min(6), text: "完了しました。次の指示を待っています。" });
+      const rows = [{ role: "user", at: min(12), text: `Please work on "${nm}"` },
+        { role: "assistant", at: min(11), text: "First I will check the related files." },
+        { role: "tool", at: min(10), text: "Check related files" }];
+      if (a.status === "blocked") rows.push({ role: "assistant", at: min(4), text: `May I run the next action: ${a.blocked_msg || "confirmation needed"}` });
+      else if (a.status === "done") rows.push({ role: "tool", at: min(3), text: "Run tests" }, { role: "assistant", at: min(2), text: "The work is done. Here is my report." });
+      else if (a.status === "working") rows.push({ role: "assistant", at: min(5), text: "Working on the fix. I will run the tests when done." }, { role: "tool", at: min(2), text: "Edit file" });
+      else rows.push({ role: "assistant", at: min(6), text: "Done. Waiting for the next instruction." });
       this.panel = { sig, id: a.id, loading: false, data: { messages: rows } }; // a made-up conversation that fits this agent
       return;
     }
@@ -420,7 +421,7 @@ export class ChatPart {
   }
   face(a, size, file) {
     const f = file ?? this.faceFile(a);
-    const box = div().flex_none().w(size).h(size).rounded(10).overflow_hidden().relative().bg("#EDE6D8");
+    const box = div().flex_none().w(size).h(size).rounded(10).overflow_hidden().relative().bg(paint("#EDE6D8"));
     if (!f) return box.flex().items_center().justify_center().child(platformIcon(a, Math.round(size * 0.5))); // no picture yet: the program's icon, not an empty square
     const w = size * 1.9;
     return box.child(image(f).absolute().left((size - w) / 2).top(-size * 0.08).w(w).h(w * 1.56));
@@ -463,7 +464,7 @@ export class ChatPart {
       this.detMissAt ??= Date.now();
       if (!this.detMissLogged) { this.detMissLogged = true; try { this.traceApprove?.({ ev: "detail-miss", id: p.id ?? null, n: list.length, ids: list.map((x) => x.id).slice(0, 8), live: list.filter((x) => x.live).length, feedLoaded: !!this.feed?.state, name: p.name ?? null }); } catch {} } // 46th 44-L3: the id looked for next to the ids of the list (feedLoaded = the collector's state is read in this copy; live = rows of the live overlay)
       const over = Date.now() - this.detMissAt >= MISS_GRACE;
-      return v_flex().size_full().bg(P.paper).child(over ? div().p(16).text_size(14).text_color(P.muted).child("このエージェントは見つかりません") : list.length ? div() : div().p(16).text_size(14).text_color(P.muted).child("読み込み中…"));
+      return v_flex().size_full().bg(P.paper).child(over ? div().p(16).text_size(14).text_color(P.muted).child("This agent cannot be found") : list.length ? div() : div().p(16).text_size(14).text_color(P.muted).child("Loading…"));
     }
     this.detMissAt = null; this.detMissLogged = false;
     const tab = tabFor(p.tab, true, this.familyRows(a, list).length - 1); // ★84 head + tabs; the body under it is the window's next block
@@ -477,7 +478,7 @@ export class ChatPart {
     // ★103-3 (2nd) a press on the head never drags the window (attached). ★105 N6: the same swallowed-by-comment slip (the border was lost)
     return h_flex().id("pick-head-root").size_full().px(14).gap(10).items_center().bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).border_b(1).border_color(P.line)
       .child(div().flex_1().min_w(0).truncate().text_size(16).font_weight(700).text_color(P.ink).child(p.name ?? ""))
-      .child(div().flex_none().px(8).py(3).rounded(6).bg("#e7e5df").text_size(13).font_weight(700).text_color("#7a766b").child("シェル"))
+      .child(div().flex_none().px(8).py(3).rounded(6).bg(paint("#e7e5df")).text_size(13).font_weight(700).text_color(paint("#7a766b")).child("Shell"))
       .child(iconBtn("pick-fold", "right", () => setShared("hakoniwa.rcollapse", { on: true, at: Date.now() }), { size: 36, isize: 20 })) // ★103-4 fold to the edge
       .child(iconBtn("pick-close", "x", () => { setShared("hakoniwa.close", { at: Date.now() }); }, { size: 36, isize: 20 })); // ★104 U13: × as an icon, like the agent head
   }
@@ -487,8 +488,8 @@ export class ChatPart {
     // ★103-3 (2nd) a press on the head never drags the window (attached). ★105 N6: the same swallowed-by-comment slip (the border was lost)
     return v_flex().id("detail-folded").size_full().items_center().py(10).gap(12).bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).border_l(1).border_color(P.line)
       .child(iconBtn("unfold-btn", "left", () => slide.collapse(false), { size: 36, isize: 20 }))
-      .child(div().flex_none().text_size(14).text_color(P.muted).child("開く")) // ★104 U2: the arrow alone does not say what it does
-      .child(a ? this.face(a, 32, p.face) : div().flex_none().w(32).h(32).rounded(8).bg("#e7e5df"))
+      .child(div().flex_none().text_size(14).text_color(P.muted).child("Open")) // ★104 U2: the arrow alone does not say what it does
+      .child(a ? this.face(a, 32, p.face) : div().flex_none().w(32).h(32).rounded(8).bg(paint("#e7e5df")))
       .child(iconBtn("folded-close", "x", (cx) => slide.close(cx), { size: 36, isize: 20 }));
   }
 
@@ -498,11 +499,11 @@ export class ChatPart {
       .text_size(13).font_weight(700).text_color(fill ? "#ffffff" : color).cursor_pointer().hover((s) => s.opacity(0.85)).on_click(fn).child(label);
     const yes = () => { if (p.action) this.confirmYes(p); else endAgent(run, { address: p.address, source: p.source }, true); closeOverlay(p.overlay); }; // ★61-1 room-close / stop: room.js
     return v_flex().id("confirm-root").size_full().p(18).gap(14).bg(P.paper).overflow_hidden() // ★95-7: a long question scrolls; the buttons stay
-      .child(div().flex_none().text_size(15).font_weight(700).text_color(P.ink).child(p.title ?? "セッションを終える"))
-      .child(div().id("confirm-scroll").flex_1().min_h(0).overflow_y_scrollbar().text_size(13).text_color(p.strong ? "#b3261e" : P.ink).child(String(p.text ?? "")))
+      .child(div().flex_none().text_size(15).font_weight(700).text_color(P.ink).child(p.title ?? "End session"))
+      .child(div().id("confirm-scroll").flex_1().min_h(0).overflow_y_scrollbar().text_size(13).text_color(p.strong ? paint("#b3261e") : P.ink).child(String(p.text ?? "")))
       .child(h_flex().flex_none().gap(10).justify_end()
-        .child(btn("confirm-no", "いいえ", () => closeOverlay(p.overlay), P.line))
-        .child(btn("confirm-yes", p.yes ?? "はい、終える", yes, "#d6455d", "#d6455d")));
+        .child(btn("confirm-no", "No", () => closeOverlay(p.overlay), P.line))
+        .child(btn("confirm-yes", p.yes ?? "Yes, end it", yes, "#d6455d", "#d6455d")));
   }
 
   // `slide`: { width (the Office's width), open, close() }. The panel is an overlay that slides in from the right.
@@ -523,18 +524,18 @@ export class ChatPart {
           if (t && t.id !== id) slide.select(t, cx); cx.stop_propagation();
         }
       });
-    if (!a) return frame.child(h_flex().flex_none().px(16).pt(14).pb(10).items_center().child(div().flex_1().text_size(17).font_weight(700).text_color(P.ink).child("エージェント詳細")));
+    if (!a) return frame.child(h_flex().flex_none().px(16).pt(14).pb(10).items_center().child(div().flex_1().text_size(17).font_weight(700).text_color(P.ink).child("Agent details")));
     const d = this.panel?.id === a.id ? this.panel.data : null, loading = this.panel?.loading, msgs = d?.messages ?? [], plat = platform(a);
     const kidsN = this.familyRows(a, list).length - 1, tab = tabFor(this.detailTab, false, kidsN), rows = this.familyRows(a, list); this.treeOrder = rows.length > 1 ? rows.map(([n]) => n.id) : [];
     const parts = this.detailHead(a, list, slide, { width: W, tab, hasTerminal: false, onTab: (k, cx) => { this.detailTab = k; cx.notify(); } }); // ★84
     const room = Math.max(120, (slide.height ?? 560) - headHeight(W) - 12);
     let body;
-    if (loading && !d) body = div().p(12).text_size(12).text_color(P.muted).child("読み込み中…");
-    else if (d?.error && !(msgs.length || d.screen)) body = div().p(12).text_size(12).text_color(/デモ/.test(d.error) ? P.muted : "#d6455d").child(String(d.error ?? ""));
+    if (loading && !d) body = div().p(12).text_size(12).text_color(P.muted).child("Loading…");
+    else if (d?.error && !(msgs.length || d.screen)) body = div().p(12).text_size(12).text_color(/\bdemo\b/i.test(d.error) ? P.muted : paint("#d6455d")).child(String(d.error ?? ""));
     else if (d?.kind === "screen") body = div().p(12).text_size(11).text_color(P.ink)
-      .font_family(settings().font_family ?? "Consolas").child(String(stripTerminalFrame(d.screen).text || "（画面が空です）")); // 28th 27-U1/U2
+      .font_family(settings().font_family ?? "Consolas").child(String(stripTerminalFrame(d.screen).text || "(the screen is empty)")); // 28th 27-U1/U2
     else if (tab === "tree") body = v_flex().p(10).gap(2).children(rows.map(([n, depth]) => { const ks = stateOf(n), me = n.id === a.id;
-      return h_flex().id(`tree-${n.id}`).gap(6).px(6).py(4).items_center().rounded(7).cursor_pointer().hover((e) => e.bg("#f3efe4")).when(me, (e) => e.bg("#e8f0fe")).on_click((_e, cx) => slide.select(n, cx))
+      return h_flex().id(`tree-${n.id}`).gap(6).px(6).py(4).items_center().rounded(7).cursor_pointer().hover((e) => e.bg(paint("#f3efe4"))).when(me, (e) => e.bg(paint("#e8f0fe"))).on_click((_e, cx) => slide.select(n, cx))
         .child(div().flex_none().w(depth * 14)).child(div().flex_none().w(10).text_size(10).text_color(P.muted).child(depth ? "└" : "")).child(dot(ks.color, 8)).child(platformIcon(n, 12))
         .child(div().flex_1().min_w(0).truncate().text_size(12).font_weight(me ? 700 : 400).text_color(P.ink).child(String(n.name || n.address || ""))).child(div().flex_none().text_size(10).font_weight(600).text_color(ks.color).child(`${ks.label} ${ago(n.since)}`)); }));
     else body = v_flex().min_h_full().gap(8).px(14).py(6).children(this.messageList(fitTail(msgs, W, room), plat.name, a.status)); // Z7: oldest on top, newest below; a short record packs to the top (fitTail keeps the newest when it is long)
@@ -543,8 +544,8 @@ export class ChatPart {
       .when(a.source === "tui", (el) => el.child(v_flex().flex_none().px(14).pt(8).pb(12).gap(4).items_center() // ★74-3: a herdr TUI agent: read here, instruct by herdr agent prompt (no App-only buttons)
         .when(!!a.address, (e2) => e2.child(h_flex().id("panel-tui-send").w_full().h(36).items_center().justify_center().gap(8).rounded(10).bg(P.blue).cursor_pointer()
           .hover((s) => s.bg("#1860c4")).on_click((_e, cx) => { cx.stop_propagation(); this.openTuiPrompt(a); })
-          .child(div().text_size(13).font_weight(700).text_color("#ffffff").child("指示を送る"))))
-        .child(div().text_size(10).text_color(P.muted).child(a.address ? "herdr TUI のエージェントです（読む・指示のみ）" : "herdr TUI のエージェントです（宛先が決まらないため読むだけ）"))));
+          .child(div().text_size(13).font_weight(700).text_color("#ffffff").child("Send instruction"))))
+        .child(div().text_size(10).text_color(P.muted).child(a.address ? "A herdr TUI agent (read and instruct only)" : "A herdr TUI agent (read only: no address to send to)"))));
   }
 
   // ★105 R7: a run of tool rows becomes one dark box (the "実行ログ"); the other messages are bubbles.
@@ -552,9 +553,9 @@ export class ChatPart {
   // for approval, of a working agent it is still running; the data's own flag (error / is_error / status) wins when it is there. `dark`: on the dark 実行ログ box.
   toolMark(m, last, status, dark = false) {
     const st = String(m.status ?? "").toLowerCase();
-    if (m.error || m.is_error || /^(error|failed|fail)$/.test(st)) return { glyph: "✕", label: "失敗", color: dark ? "#f87171" : "#d6455d" };
-    if (/^(pending|waiting|blocked)$/.test(st) || (last && status === "blocked")) return { glyph: "…", label: "承認待ち", color: dark ? "#fbbf24" : "#b7791f" };
-    if (/^(running|working|in_progress)$/.test(st) || (last && status === "working")) return { glyph: "…", label: "実行中", color: dark ? "#60a5fa" : "#2563eb" };
+    if (m.error || m.is_error || /^(error|failed|fail)$/.test(st)) return { glyph: "✕", label: "Failed", color: dark ? "#f87171" : paint("#d6455d") };
+    if (/^(pending|waiting|blocked)$/.test(st) || (last && status === "blocked")) return { glyph: "…", label: "Blocked", color: dark ? "#fbbf24" : paint("#b7791f") };
+    if (/^(running|working|in_progress)$/.test(st) || (last && status === "working")) return { glyph: "…", label: "Running", color: dark ? "#60a5fa" : paint("#2563eb") };
     return { glyph: "✓", label: "", color: dark ? "#4ade80" : STATE.done.color };
   }
   markEl(mk) { return h_flex().flex_none().gap(4).items_center().text_color(mk.color).child(mk.label ? div().text_size(11).child(mk.label) : div()).child(div().child(mk.glyph)); }
@@ -563,7 +564,7 @@ export class ChatPart {
     const out = []; let run = [];
     const flush = () => { if (!run.length) return; const rows = run; run = [];
       out.push(v_flex().id(`pm-log-${out.length}`).w_full().gap(4).px(14).py(10).rounded(10).bg("#14213d")
-        .child(h_flex().gap(6).items_center().child(icon("terminal", 14, "#cbd5e1")).child(div().text_size(15).font_weight(700).text_color("#cbd5e1").child("実行ログ（直近）")))
+        .child(h_flex().gap(6).items_center().child(icon("terminal", 14, "#cbd5e1")).child(div().text_size(15).font_weight(700).text_color("#cbd5e1").child("Activity log (recent)")))
         .children(rows.map(({ m, last }, j) => h_flex().id(`pm-log-${out.length}-${j}`).w_full().gap(8).items_center().font_family("Consolas").text_size(16).text_color("#e5e7eb")
           .child(div().flex_1().min_w(0).truncate().child(String(m.text ?? "").split(/\r?\n/)[0])).child(this.markEl(this.toolMark(m, last, status, true)))))); };
     msgs.forEach((m, i) => { if (m.role === "tool") run.push({ m, last: i === msgs.length - 1 }); else { flush(); out.push(this.panelMessage(m, i, agentName, i === msgs.length - 1, status)); } });
@@ -573,23 +574,23 @@ export class ChatPart {
 
   // One line of the conversation: who, when, what. A tool's work is a small row with its mark (✓ done / … waiting or running / ✕ failed).
   panelMessage(m, i, agentName, last = false, status = null) {
-    if (m.role === "tool") return h_flex().id(`pm-${i}`).w_full().gap(8).px(10).py(6).items_center().rounded(6).bg("#f6f7f9") // 22nd N7: a pale fill and a thin pale frame (the same two colours as detail.js's screen-tool), muted text: a record, not something said
-      .border(1).border_color("#e3e6ec").text_size(16).text_color(P.muted)
+    if (m.role === "tool") return h_flex().id(`pm-${i}`).w_full().gap(8).px(10).py(6).items_center().rounded(6).bg(paint("#f6f7f9")) // 22nd N7: a pale fill and a thin pale frame (the same two colours as detail.js's screen-tool), muted text: a record, not something said
+      .border(1).border_color(paint("#e3e6ec")).text_size(16).text_color(P.muted)
       .child(div().flex_1().min_w(0).truncate().child(String(m.text ?? "").split("\n")[0])).child(this.markEl(this.toolMark(m, last, status)));
     const user = m.role === "user", { text: body, from } = unwrapHc(m.text);
     // ★105 (codex_3): a rounder bubble (12), the agent's in a pale blue, the time at the right end of the name row
     return v_flex().id(`pm-${i}`).w_full().gap(3)
       .child(h_flex().gap(6).items_center().text_size(13)
-        .child(div().font_weight(700).text_color(user ? P.blue : P.ink).child(user ? "あなた" : agentName))
-        .when(!!from, (e) => e.child(div().id(`pm-from-${i}`).flex_none().text_size(11).text_color(P.muted).tooltip(String(from)).child("親から")))
+        .child(div().font_weight(700).text_color(user ? P.blue : P.ink).child(user ? "You" : agentName))
+        .when(!!from, (e) => e.child(div().id(`pm-from-${i}`).flex_none().text_size(11).text_color(P.muted).tooltip(String(from)).child("from parent")))
         .child(div().flex_1())
         .child(div().flex_none().text_color(P.muted).child(m.at ? clock(m.at) : "")))
-      .child(div().w_full().px(14).py(10).rounded(12).bg(user ? "#d6e6fb" : "#e8f0fe").border(user ? 1 : 0).border_color("#9bbdf0").text_size(17).text_color(P.ink).child(soft(body)));
+      .child(div().w_full().px(14).py(10).rounded(12).bg(user ? paint("#d6e6fb") : paint("#e8f0fe")).border(user ? 1 : 0).border_color(paint("#9bbdf0")).text_size(17).text_color(P.ink).child(soft(body)));
   }
 
   message(m, i) {
-    const who = { user: ["あなた", "#2f7cf6", "#eef4ff"], assistant: ["エージェント", "#39a380", "#f3faf6"],
-      tool: ["ツール", "#89909d", "#f6f7f9"] }[m.role] ?? [m.role, P.muted, P.bg];
+    const who = { user: ["You", paint("#2f7cf6"), paint("#eef4ff")], assistant: ["Agent", paint("#39a380"), paint("#f3faf6")],
+      tool: ["Tool", paint("#89909d"), paint("#f6f7f9")] }[m.role] ?? [m.role, P.muted, P.bg];
     return v_flex().id(`msg-${i}`).w_full().gap(3).px(10).py(7).rounded(7).bg(who[2])
       .child(h_flex().gap(6).items_center().text_size(10)
         .child(div().font_weight(700).text_color(who[1]).child(who[0]))

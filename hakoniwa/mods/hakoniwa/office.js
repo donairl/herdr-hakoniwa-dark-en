@@ -18,6 +18,7 @@ import { clipName, NAME_EM, NAME_EM_FULL } from "./ui-rules.js";
 import { commanderInfo, tripShowsPapers, clearTransient, isSeatSpot, errandAllowed, tierFor, hash, moonPhase, wantsBreak, breakAllowed, breakSeconds, deskStage, seatedDepth, starsShown, moonShown, doorTimeline, doorStateOf, stuckAction, stuckCheck, liveKinds, replyWaiting, flockBirds, wingFrame, BIRD_SCALE, LEGEND_MARKS, LEGEND_PC_RULES, LEGEND_STRIP, fillPlates, l86WaitPose } from "./life.js";
 import { boardDots, boardElements, fixedBoard, WEATHER_KINDS } from "./board.js";
 import { STATE, P, dot, chip, platform, platformIcon, stateOf, answeredView, blockedText, snapBox, quietTagRule, fitZoom as fitZoomBase, bleedBox, planWaitText, RIGHT_EDGE } from "./common.js";
+import { paint } from "./palette.js"; // light -> dark UI colours (follows the appearance)
 
 export const TALK_DOTS = [0, 1, 2], TALK_DOT_MS = 330; // ★70-3 the talk bubble's three dots: dot n is lit in frame n (1 -> 2 -> 3, then again)
 export const talkDotFrames = (n) => TALK_DOTS.map((i) => (i === n ? "●" : "∙"));
@@ -1143,7 +1144,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     const termOn = this.syncTerm(sel, list, left, cx); // an App agent: its real terminal in a window; the side panel stays shut
     this.autoFit(); // ★110 (office-fix7, gap 7): the window's width (termBox) is only known here; the fit above ran with 0 on the draw that opened it and nothing drew again, so the floor stayed 805px wide in a 745px gap. Fit again now (it does nothing when the margin did not change).
     if (this.open && !termOn) this.syncPanel(sel, list, cx);
-    const shell = div().id("office-root").relative().size_full().overflow_hidden().bg("#f3efe7")
+    const shell = div().id("office-root").relative().size_full().overflow_hidden().bg(paint("#f3efe7"))
       .on_size_change((size, cx) => { this.left = size; cx.notify(); })
       .on_mouse_down("left", (e) => { if (!this.overColumn(e.local_position, e.position)) this.dragStart(e.position.x, e.position.y); }) // (★74-2 a press over the right column / terminal never starts a drag) ★30-6 drag the floor (only on the empty floor: a pressable thing stops the press; and only after a small move)
       .on_mouse_move((e, cx) => { if (this.resize) { this.resizeMove(e.position.x, cx); return; } if (this.dragFrom && this.overColumn(e.local_position, e.position)) { this.dragFrom = null; return; } this.dragMove(e.position.x, e.position.y, cx); }) // (★74-2 the pointer went over the terminal: the drag ends, the floor never follows it)
@@ -1532,7 +1533,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     let denseTags = 0;
     const noGo = []; // ★50-2 the words no tag sits on: the board, and the two white signs of the windows
     if (sc.board?.rect) noGo.push({ x: ox + sc.board.rect[0] * k, y: oy + sc.board.rect[1] * k, w: sc.board.rect[2] * k, h: sc.board.rect[3] * k });
-    for (const [kd, lb] of [["approval", "承認デスク"], ["counter", "提出カウンター"]]) { const w1 = sc.windows?.[kd], sa1 = w1?.sign_at; if (!sa1) continue; const z1 = w1.sign_size ?? [Math.max(72, 14 + lb.length * 12), 22], sw1 = z1[0] * (w1.sign_file ? k : 1), sh1 = z1[1] * (w1.sign_file ? k : 1); noGo.push({ x: ox + sa1[0] * k - sw1 / 2 - 2, y: oy + sa1[1] * k - sh1 / 2 - 2, w: sw1 + 4, h: sh1 + 4 }); }
+    for (const [kd, lb] of [["approval", "Approvals"], ["counter", "Reports"]]) { const w1 = sc.windows?.[kd], sa1 = w1?.sign_at; if (!sa1) continue; const z1 = w1.sign_size ?? [Math.max(72, 14 + lb.length * 7), 22], sw1 = z1[0] * (w1.sign_file ? k : 1), sh1 = z1[1] * (w1.sign_file ? k : 1); noGo.push({ x: ox + sa1[0] * k - sw1 / 2 - 2, y: oy + sa1[1] * k - sh1 / 2 - 2, w: sw1 + 4, h: sh1 + 4 }); }
     const onNoGo = (q) => noGo.some((b) => q.x < b.x + b.w && b.x < q.x + q.w && q.y < b.y + b.h && b.y < q.y + q.h);
     const smallA = [], bigA = [], bigRects = [], talkA = [], talkRects = []; // ★76 talkA: the "…" bubbles, the front layer
     const waiters = shown.filter((x) => String(x.p.at).startsWith("wait:") && !x.p.walking && !x.p.leaving), crowdWait = waiters.length > 3 ? new Set(waiters.map((x) => x.id)) : new Set();
@@ -1614,7 +1615,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         .when(!!line, (e) => e.child(line)).child(tag) });
     }
     const byKey = (m, n) => (m.k < n.k ? -1 : 1);
-    if (crowdWait.size) { const dr0 = sc.door?.rect, f = waiters[0], la = sc.door?.label_at, hx = la ? ox + la[0] * k : dr0 ? ox + (dr0[0] + dr0[2] / 2) * k : ox + f.pos[0] * k, hy = la ? oy + la[1] * k - 10 : dr0 ? oy + dr0[1] * k - 26 : oy + f.pos[1] * k - 100 * k; /* label_at: the floor in front of the door, under the waiting crowd */ smallA.push({ k: "~wait", el: div().id("tag-wait").absolute().left(hx - 50).top(hy).px(8).py(3).rounded(10).bg("#fffdf8f2").border(1.5).border_color("#8a94a6").whitespace_nowrap().text_size(11).font_weight(700).text_color("#1F2A37").child(`入口 ${crowdWait.size}人`) }); }
+    if (crowdWait.size) { const dr0 = sc.door?.rect, f = waiters[0], la = sc.door?.label_at, hx = la ? ox + la[0] * k : dr0 ? ox + (dr0[0] + dr0[2] / 2) * k : ox + f.pos[0] * k, hy = la ? oy + la[1] * k - 10 : dr0 ? oy + dr0[1] * k - 26 : oy + f.pos[1] * k - 100 * k; /* label_at: the floor in front of the door, under the waiting crowd */ smallA.push({ k: "~wait", el: div().id("tag-wait").absolute().left(hx - 50).top(hy).px(8).py(3).rounded(10).bg(paint("#fffdf8f2")).border(1.5).border_color("#8a94a6").whitespace_nowrap().text_size(11).font_weight(700).text_color(paint("#1F2A37")).child(`Entrance: ${crowdWait.size} waiting`) }); }
     root.children([...smallA.sort(byKey).map((x) => x.el), ...bigA.sort(byKey).map((x) => x.el), ...talkA.sort(byKey).map((x) => x.el)]); // large bubbles are drawn over the small tags
     let cardRect = null; // where the approval card ended up (the sign gives way to it)
     { // ONE card for the approvals: the first request, a blue approve button, "N more" for the rest. Clicking the name opens the detail on the right.
@@ -1628,7 +1629,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         const obst = [...placed, ...(sc.islands ?? []).filter((q) => q.plate?.at).map((q) => ({ x: ox + q.plate.at[0] * k - (q.plate.size?.[0] ?? 150) / 2, y: oy + q.plate.at[1] * k - (q.plate.size?.[1] ?? 18) / 2, w: q.plate.size?.[0] ?? 150, h: q.plate.size?.[1] ?? 18 })), ...[...bodies.values()].map((q) => ({ x: q.x, y: q.y, w: q.w, h: q.h }))];
         if (win.rect) obst.push({ x: ox + win.rect[0] * k, y: oy + win.rect[1] * k, w: win.rect[2] * k, h: win.rect[3] * k }); // the approval desk itself
         if (sc.board?.rect) obst.push({ x: ox + sc.board.rect[0] * k, y: oy + sc.board.rect[1] * k, w: sc.board.rect[2] * k, h: sc.board.rect[3] * k }); // ★26-3: the desks now stand in front of the board: no tag or card covers its letters
-        for (const [kd, lb] of [["approval", "承認デスク"], ["counter", "提出カウンター"]]) { const w1 = sc.windows?.[kd], sa1 = w1?.sign_at; if (!sa1) continue; const z1 = w1.sign_size ?? [Math.max(72, 14 + lb.length * 12), 22], f1 = w1.sign_file ? k : 1; obst.push({ x: ox + sa1[0] * k - z1[0] * f1 / 2 - 2, y: oy + sa1[1] * k - z1[1] * f1 / 2 - 2, w: z1[0] * f1 + 4, h: z1[1] * f1 + 4 }); } // the white signs are obstacles for the card
+        for (const [kd, lb] of [["approval", "Approvals"], ["counter", "Reports"]]) { const w1 = sc.windows?.[kd], sa1 = w1?.sign_at; if (!sa1) continue; const z1 = w1.sign_size ?? [Math.max(72, 14 + lb.length * 7), 22], f1 = w1.sign_file ? k : 1; obst.push({ x: ox + sa1[0] * k - z1[0] * f1 / 2 - 2, y: oy + sa1[1] * k - z1[1] * f1 / 2 - 2, w: z1[0] * f1 + 4, h: z1[1] * f1 + 4 }); } // the white signs are obstacles for the card
         if (crowdWait.size) { const dr0 = sc.door?.rect, f = waiters[0], la = sc.door?.label_at; if (la) obst.push({ x: ox + la[0] * k - 54, y: oy + la[1] * k - 14, w: 108, h: 28 }); else obst.push(dr0 ? { x: ox + (dr0[0] + dr0[2] / 2) * k - 54, y: oy + dr0[1] * k - 30, w: 108, h: 30 } : { x: ox + f.pos[0] * k - 50, y: oy + f.pos[1] * k - 100 * k, w: 100, h: 24 }); }
         let nearO = obst; const hits = (r) => nearO.some((q) => r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h); // (nearO: set below to the obstacles that can touch any place tried)
         const inWorld = (r) => r.x >= 4 && r.x + r.w <= left.width - panelW - 4 && r.y >= 4 && r.y + r.h <= left.height - 4 && this.inBox(sc, (r.x - ox) / k, (r.y - oy) / k, r.w / k, r.h / k);
@@ -1658,25 +1659,25 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         }
         this._cardMemo = { key: cardKey, v: { small, cw, chh, cl, ct } }; }
         cardRect = { x: cl, y: ct - 14, w: cw, h: chh };
-        if (small) root.child(h_flex().id("approval-card").absolute().left(cl).top(ct - 14).w(cw).h(chh).px(6).gap(5).items_center().rounded(8).bg("#ffffff").border(1.5).border_color(STATE.blocked.color)
-          .child(this.stateMark(STATE.blocked, 14)).child(div().flex_1().min_w(0).truncate().text_size(11).font_weight(800).text_color(P.ink).child(`承認待ち${waiting.length}`))
-          .child(div().id("approval-ok").flex_none().px(8).py(2).rounded(7).bg(P.blue).text_size(11).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(go0).child("承認")));
-        else root.child(v_flex().id("approval-card").absolute().left(cl).top(ct - 14).w(cw).items_center().child(v_flex().w(cw).h(chh).px(6).py(4).gap(2).rounded(8).bg("#ffffff").border(1.5).border_color(STATE.blocked.color)
+        if (small) root.child(h_flex().id("approval-card").absolute().left(cl).top(ct - 14).w(cw).h(chh).px(6).gap(5).items_center().rounded(8).bg(paint("#ffffff")).border(1.5).border_color(STATE.blocked.color)
+          .child(this.stateMark(STATE.blocked, 14)).child(div().flex_1().min_w(0).truncate().text_size(11).font_weight(800).text_color(P.ink).child(`Blocked ${waiting.length}`))
+          .child(div().id("approval-ok").flex_none().px(8).py(2).rounded(7).bg(P.blue).text_size(11).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(go0).child("OK")));
+        else root.child(v_flex().id("approval-card").absolute().left(cl).top(ct - 14).w(cw).items_center().child(v_flex().w(cw).h(chh).px(6).py(4).gap(2).rounded(8).bg(paint("#ffffff")).border(1.5).border_color(STATE.blocked.color)
           .child(h_flex().gap(6).items_center().child(this.stateMark(STATE.blocked, 14))
-            .child(div().id("approval-name").flex_1().min_w(0).truncate().text_size(11).font_weight(800).text_color(P.ink).cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); this.select(a0, cx); }).child(`承認待ち ${waiting.length}件`)))
+            .child(div().id("approval-name").flex_1().min_w(0).truncate().text_size(11).font_weight(800).text_color(P.ink).cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); this.select(a0, cx); }).child(`Blocked: ${waiting.length}`)))
           .child(h_flex().gap(6).items_center().child(div().flex_none().text_size(12).text_color(P.muted).child("▤"))
             .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(P.ink).child((() => { const t0 = String(blockedText(a0)).split("\n")[0] || this.shortName(a0); return med && [...t0].length > 14 ? [...t0].slice(0, 13).join("") + "…" : t0; })())))
           .child(h_flex().gap(8).items_center()
-            .child(div().id("approval-ok").flex_none().px(12).py(2).rounded(7).bg(P.blue).text_size(11).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(go0).child("承認"))
+            .child(div().id("approval-ok").flex_none().px(12).py(2).rounded(7).bg(P.blue).text_size(11).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(go0).child("Approve"))
             .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(P.muted).child(this.shortName(a0)))))
           );  // (the tail is drawn below: a thin line and ▼ down to the desk top)
         { const bx0 = cl + cw / 2, by0 = ct - 14 + chh; if (T[1] - by0 > 2) root.child(div().id("approval-tail-line").absolute().left(bx0 - 0.75).top(by0).w(1.5).h(T[1] - by0 - 8).bg(STATE.blocked.color)); root.child(div().id("approval-tail").absolute().left(bx0 - 6).top(Math.max(by0, T[1] - 14)).text_size(11).text_color(STATE.blocked.color).child("▼")); } // the tail: at most 60 px, pointing at the desk
       }
     }
     this.ph("signs");
-    for (const [kind, label] of [["approval", "承認デスク"], ["counter", "提出カウンター"]]) { // the white standing signs (T3's picture when A gives sign_file + sign_size, else a white rounded plate), with the words on top (11 px and up)
+    for (const [kind, label] of [["approval", "Approvals"], ["counter", "Reports"]]) { // the white standing signs (T3's picture when A gives sign_file + sign_size, else a white rounded plate), with the words on top (11 px and up)
       const w0 = sc.windows?.[kind], sa = w0?.sign_at; if (!sa) continue;
-      const sz = w0.sign_size ?? [Math.max(72, 14 + label.length * 12), 22], sw = sz[0] * (w0.sign_file ? k : 1), sh = sz[1] * (w0.sign_file ? k : 1);
+      const sz = w0.sign_size ?? [Math.max(72, 14 + label.length * 7), 22], sw = sz[0] * (w0.sign_file ? k : 1), sh = sz[1] * (w0.sign_file ? k : 1);
       let sx = ox + sa[0] * k - sw / 2, sy = oy + sa[1] * k - sh / 2; // the sign gives way to the card: sideways, or down, to the nearest place that is clear of it and of the people
       const clashL = [cardRect, ...bodies.values()]; const clash = (x, y) => clashL.some((q) => q && x < q.x + q.w && q.x < x + sw && y < q.y + q.h && q.y < y + sh); // (the list once, not per try)
       if (kind === "approval" && cardRect && clash(sx, sy)) {
@@ -1685,22 +1686,22 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         if (hit) [sx, sy] = hit;
       }
       const el = div().id(`${kind}-sign`).absolute().left(sx).top(sy).w(sw).h(sh).flex().items_center().justify_center().whitespace_nowrap().text_size(11).font_weight(800).text_color(P.ink)
-        .when(!w0.sign_file, (e) => e.rounded(6).bg("#ffffff").border(1).border_color("#d9d4c8")).when(!!w0.sign_file, (e) => e.child(image(w0.sign_file).absolute().left(0).top(0).w(sw).h(sh)));
+        .when(!w0.sign_file, (e) => e.rounded(6).bg(paint("#ffffff")).border(1).border_color(paint("#d9d4c8"))).when(!!w0.sign_file, (e) => e.child(image(w0.sign_file).absolute().left(0).top(0).w(sw).h(sh)));
       root.child(el.child(div().relative().child(label)));
     }
     // island plates: a mark + the island's name + "3人・承認1" on the island's front edge (A's islands[].plate)
     for (const isl of sc.islands ?? []) if (isl.plate?.at) {
       const mine = (isl.seats ?? []).map((sid) => seatPid().get(sid)).filter(Boolean), wt = mine.filter((pid) => byId.get(pid)?.status === "blocked").length;
-            if (this.plateOpen === isl.key) root.child(v_flex().id(`plist-${isl.key}`).on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).absolute().left(ox + isl.plate.at[0] * k - 90).top(oy + isl.plate.at[1] * k + 16).w(180).p(6).gap(2).rounded(8).bg(P.paper).border(1).border_color("#e6e2d8")
+            if (this.plateOpen === isl.key) root.child(v_flex().id(`plist-${isl.key}`).on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).absolute().left(ox + isl.plate.at[0] * k - 90).top(oy + isl.plate.at[1] * k + 16).w(180).p(6).gap(2).rounded(8).bg(P.paper).border(1).border_color(paint("#e6e2d8"))
         .when(true, (el) => { const rm = this.roomMenu?.(isl, mine.map((pid) => byId.get(pid)).filter(Boolean)); return rm ? el.child(rm) : el; }) // ★61-1 the room's operations (room.js)
-        .children(mine.slice(0, 12).map((pid) => { const q = byId.get(pid); return q ? h_flex().id(`pl-${pid}`).gap(5).items_center().px(4).py(2).rounded(5).cursor_pointer().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).hover((e) => e.bg("#f3efe4")).on_click((_e, cx) => { this.plateOpen = null; this.select(q, cx); }).child(dot(stateOf(q).color, 7)).child(div().flex_1().min_w(0).truncate().text_size(10).text_color(P.ink).child(this.shortName(q))) : div(); })));
-      const srcCol = isl.source === "t3" ? "#7c4dff" : isl.source === "tui" ? "#27ae60" : "#2f80ed"; // the island's name: small grey words on the floor at the island's front edge (no board); a small orange mark only when somebody waits for approval
-      const txt = `${isl.plate.arrow ? `${isl.plate.arrow} ` : ""}${clipName(isl.title, 12)}  ${mine.length ? `${mine.length}人` : "空き"}`, pw = Math.min(210, 24 + [...txt].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 13 : 7.8), 0) + (wt > 0 ? 36 : 0)); // 2nd-105 N4: cut at 12 em (was 14) and a wider box so the end is "…", never a bare "_" // 12 px words (★100-4: no ＋ any more)
+        .children(mine.slice(0, 12).map((pid) => { const q = byId.get(pid); return q ? h_flex().id(`pl-${pid}`).gap(5).items_center().px(4).py(2).rounded(5).cursor_pointer().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).hover((e) => e.bg(paint("#f3efe4"))).on_click((_e, cx) => { this.plateOpen = null; this.select(q, cx); }).child(dot(stateOf(q).color, 7)).child(div().flex_1().min_w(0).truncate().text_size(10).text_color(P.ink).child(this.shortName(q))) : div(); })));
+      const srcCol = isl.source === "t3" ? paint("#7c4dff") : isl.source === "tui" ? "#27ae60" : paint("#2f80ed"); // the island's name: small grey words on the floor at the island's front edge (no board); a small orange mark only when somebody waits for approval
+      const txt = `${isl.plate.arrow ? `${isl.plate.arrow} ` : ""}${clipName(isl.title, 12)}  ${mine.length ? `${mine.length} ppl` : "empty"}`, pw = Math.min(210, 24 + [...txt].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 13 : 7.8), 0) + (wt > 0 ? 36 : 0)); // 2nd-105 N4: cut at 12 em (was 14) and a wider box so the end is "…", never a bare "_" // 12 px words (★100-4: no ＋ any more)
       root.child(h_flex().id(`plate-${isl.key}`).cursor_pointer().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).on_click((_e, cx) => { cx.stop_propagation(); this.plateOpen = this.plateOpen === isl.key ? null : isl.key; cx.notify(); })
-        .absolute().left(ox + isl.plate.at[0] * k - pw / 2).top(oy + isl.plate.at[1] * k - 10).w(pw).h(20).gap(5).items_center().justify_center().rounded(6).bg("#fffdf8e8").border(1).border_color("#d9d2c3").whitespace_nowrap()
+        .absolute().left(ox + isl.plate.at[0] * k - pw / 2).top(oy + isl.plate.at[1] * k - 10).w(pw).h(20).gap(5).items_center().justify_center().rounded(6).bg(paint("#fffdf8e8")).border(1).border_color(paint("#d9d2c3")).whitespace_nowrap()
         .child(dot(srcCol, 6)) // self-review-0505 #3: 11 px light grey on a see-through grey read poorly on the floor: 12 px dark words on a near-white card
-        .child(div().min_w(0).truncate().text_size(12).font_weight(700).text_color("#374151").child(txt))
-        .when(wt > 0, (e) => e.child(h_flex().flex_none().gap(3).px(5).items_center().rounded(8).bg("#fde7cf").child(dot(STATE.blocked.color, 6)).child(div().text_size(11).font_weight(700).text_color(STATE.blocked.color).child(`${wt}`)))));
+        .child(div().min_w(0).truncate().text_size(12).font_weight(700).text_color(paint("#374151")).child(txt))
+        .when(wt > 0, (e) => e.child(h_flex().flex_none().gap(3).px(5).items_center().rounded(8).bg(paint("#fde7cf")).child(dot(STATE.blocked.color, 6)).child(div().text_size(11).font_weight(700).text_color(STATE.blocked.color).child(`${wt}`)))));
     }
     const hov = this.hoverId && byId.get(this.hoverId), hr = hov && rects.get(this.hoverId);
     if (hov && hr && !(this.open && this.selId === hov.id)) root.child(this.hoverCard(hov, hr, left));
@@ -1751,7 +1752,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     if (this.needTick && !this.tickTimer) this.tickTimer = cx.timer.every(125, (cx) => { if (this.needTick) { this.wtick = ((this.wtick ?? 0) + 1) % 24; cx.notify(); } });
     if (!G) for (const l of labels) root.child(l.el); // (a grid scene drew them with the floor)
     shell.child(root);
-    if (this.t?.cached && !this.t.done) shell.child(div().id("plan-wait").absolute().right(10).top(8).px(6).py(2).rounded(6).bg("#fffdf8e8").text_size(10).text_color(P.muted).child("更新中…")); // ★95-13: a small mark in the corner while the last floor is shown and the new plan is made
+    if (this.t?.cached && !this.t.done) shell.child(div().id("plan-wait").absolute().right(10).top(8).px(6).py(2).rounded(6).bg(paint("#fffdf8e8")).text_size(10).text_color(P.muted).child("Updating…")); // ★95-13: a small mark in the corner while the last floor is shown and the new plan is made
     this.ph("legend");
     if (this.legendCollapsed === undefined) { this.legendCollapsed = false; cx.spawn(async (cx) => { try { const t = await readTextFile(`${appHome()}/hakoniwa-office/legend.json`); const j = t ? JSON.parse(t) : null; if (j && j.collapsed === true) { this.legendCollapsed = true; cx.notify(); } else if (j && j.hidden === true) { try { await writeTextFile(`${appHome()}/hakoniwa-office/legend.json`, JSON.stringify({ collapsed: false }), null); } catch {} } } catch {} }); } // ★50-7a: only collapsed:true folds; an old hidden:true (the × of old) is migrated once to open (★38's always-on is the default)
     const lgX = 10 + (this.termPanel && !this.demo?.() && this.panelOpen?.() ? this.panelWidth() : 0); // ★72-3: right of the list only while it is open (the folded strip is at the top: r46)
@@ -1763,12 +1764,12 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     if (!(this.floorLegend ?? FLOOR_LEGEND)) { /* ★89 the floor legend is not drawn (lgShell is a dummy): building ~20 rows each frame cost 5-15 ms of the 50 ms budget, a walk was cut by it */ } else if (this.legendCollapsed || (!lgOpened && lgCover())) { // ★43 collapsed: the small "凡例" button stays at the lower-left and opens it again
       // self-review-0505 #7: four pictures with their words (11 px, as the board's words: ★47-1) and "凡例 ▸"; pressing anywhere opens the whole legend
       const pic = (part) => { const q = this.lifeParts?.[part], box = div().flex_none().w(24).h(20).flex().items_center().justify_center(); if (!q?.file) return box; const s = Math.min(22 / q.w, 18 / q.h); return box.child(image(q.file).w(Math.max(1, q.w * s)).h(Math.max(1, q.h * s))); };
-      lgShell.child(h_flex().id("legend").absolute().left(lgX).top(left.height - 54).h(44).px(8).gap(8).items_center().rounded(8).cursor_pointer().bg("#fffdf8ee").border(1).border_color("#e6e2d8").text_size(11).text_color(P.ink)
-        .hover((s) => s.bg("#fffdf8")).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      lgShell.child(h_flex().id("legend").absolute().left(lgX).top(left.height - 54).h(44).px(8).gap(8).items_center().rounded(8).cursor_pointer().bg(paint("#fffdf8ee")).border(1).border_color(paint("#e6e2d8")).text_size(11).text_color(P.ink)
+        .hover((s) => s.bg(paint("#fffdf8"))).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .children(LEGEND_STRIP.map((m) => v_flex().id(`legend-strip-${m.key}`).flex_none().gap(1).items_center().child(pic(m.part)).child(div().text_size(11).text_color(P.ink).child(m.label))))
-        .child(div().flex_none().w(1).h(30).bg("#e6e2d8"))
+        .child(div().flex_none().w(1).h(30).bg(paint("#e6e2d8")))
         .on_click((_e, cx) => { cx.stop_propagation(); this.legendCollapsed = false; this.legendUserOpen = true; cx.notify(); cx.spawn(async () => { try { await writeTextFile(`${appHome()}/hakoniwa-office/legend.json`, JSON.stringify({ collapsed: false }), null); } catch {} }); })
-        .child(div().flex_none().text_size(11).font_weight(700).text_color(P.muted).child("凡例 ▸")));
+        .child(div().flex_none().text_size(11).font_weight(700).text_color(P.muted).child("Legend ▸")));
     } else { // ★38 the legend is always on: a small board fixed at the window's lower-left, with the picture of what is drawn
       const { W, H, bodyH, rowH, twoCol, pcOpen } = this.legendLayout(left);
       const icon = (spec, h) => {
@@ -1789,10 +1790,10 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         if (pc) heading.id("legend-pc-toggle").cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); this.legendPcOpen = !pcOpen; cx.notify(); });
         return v_flex().id(pc ? "legend-pc-block" : "legend-marks-block").flex_none().w(twoCol ? (W - 26) / 2 : W - 16).min_w(0).gap(0).child(heading).children(items.map(row));
       };
-      const marks = block("小物と印", LEGEND_MARKS), pc = block(`机の PC ${pcOpen ? "▾" : "▸"}`, pcOpen ? LEGEND_PC_RULES : [], true);
+      const marks = block("Items and marks", LEGEND_MARKS), pc = block(`Desk PC ${pcOpen ? "▾" : "▸"}`, pcOpen ? LEGEND_PC_RULES : [], true);
       const contents = twoCol ? h_flex().gap(10).items_start().child(marks).child(pc) : v_flex().gap(4).child(marks).child(pc);
-      lgShell.child(v_flex().id("legend").absolute().left(lgX).top(left.height - 10 - H).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).w(W).h(H).p(7).gap(0).overflow_hidden().rounded(8).bg("#fffdf8f2").border(1).border_color("#e6e2d8").text_size(11)
-        .child(h_flex().h(19).flex_none().gap(4).items_center().child(div().flex_1().text_size(12).font_weight(700).text_color(P.ink).child("凡例")).child(div().id("legend-collapse").cursor_pointer().text_size(11).text_color(P.muted).on_click((_e, cx) => { this.legendCollapsed = true; cx.notify(); cx.spawn(async () => { try { await writeTextFile(`${appHome()}/hakoniwa-office/legend.json`, JSON.stringify({ collapsed: true }), null); } catch {} }); }).child("たたむ")))
+      lgShell.child(v_flex().id("legend").absolute().left(lgX).top(left.height - 10 - H).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).w(W).h(H).p(7).gap(0).overflow_hidden().rounded(8).bg(paint("#fffdf8f2")).border(1).border_color(paint("#e6e2d8")).text_size(11)
+        .child(h_flex().h(19).flex_none().gap(4).items_center().child(div().flex_1().text_size(12).font_weight(700).text_color(P.ink).child("Legend")).child(div().id("legend-collapse").cursor_pointer().text_size(11).text_color(P.muted).on_click((_e, cx) => { this.legendCollapsed = true; cx.notify(); cx.spawn(async () => { try { await writeTextFile(`${appHome()}/hakoniwa-office/legend.json`, JSON.stringify({ collapsed: true }), null); } catch {} }); }).child("Fold")))
         .child(div().h(2).flex_none())
         .child(div().id("legend-body").h(bodyH).flex_none().min_h(0).overflow_y_scrollbar().on_scroll_wheel((_e, cx) => cx.stop_propagation()).child(contents)));
     }
@@ -1802,7 +1803,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     if (this.termBox && !this.rightCollapsed && !this.demo?.()) { // ★84 the right window's left border (★103-4 none while it is folded): a handle flush with it; while dragging a thin line shows where it will be (the window opens again on release)
       const bx = this.termBox, gx = this.ghostW ? Math.round((this.left?.width ?? bx.x + bx.w + RIGHT_EDGE) - RIGHT_EDGE - this.ghostW) : null;
       shell.child(splitHandle("right-split", (e, cx2) => { this.resizeStart("right", e.position.x); cx2.notify(); }, this.resize?.side === "right").left(bx.x - 3).top(bx.y).h(bx.h));
-      if (gx != null) shell.child(div().absolute().left(gx).top(bx.y).w(2).h(bx.h).bg("#2F80ED"));
+      if (gx != null) shell.child(div().absolute().left(gx).top(bx.y).w(2).h(bx.h).bg(paint("#2F80ED")));
     }
     if (this.regionShown && !this.rightCollapsed && !this.demo?.()) shell.child(splitHandle("right-split", (e, cx2) => { this.resizeStart("right", e.position.x); cx2.notify(); }, this.resize?.side === "right").left(left.width - 3).top(0).h(left.height)); // ★103-3 (office-region103) the region's border: the same translucent handle as the left one
     if (this.termPanel && !this.demo?.()) shell.child(this.termPanel(left, list, cx)); // ★72-3 the terminals' list at the left edge (real data only)
@@ -1930,15 +1931,15 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     // self-review #6: at the upper right, just under the band (at the lower right the App's own notices, e.g. "Restart", covered them); left of the side panel while it is open
     // 4th W6: the "＋" was still under the window by one button's width (r4 picture), so the buttons keep a margin (ZOOM_GAP) clear of the attached window's left edge
     const panelW = (this.panelLeft != null ? Math.max(0, left.width - this.panelLeft) : 0) + this.rightTaken() + (this.rightTaken() > 0 ? ZOOM_GAP : 0); // ★104 V3: the attached right window covers the floor's right edge too
-    return h_flex().id("zoom-controls").absolute().right(10 + panelW).top(8).h(24).gap(2).items_center().rounded(8).bg("#fffdf8ee").border(1).border_color("#e6e2d8")
-      .child(btn("zoom-out", "－", (cx) => this.zoomBy(1 / 1.25, null, cx))).child(btn("zoom-fit", "全体を表示", (cx) => this.zoomFit(cx), 84)).child(btn("zoom-in", "＋", (cx) => this.zoomBy(1.25, null, cx)));
+    return h_flex().id("zoom-controls").absolute().right(10 + panelW).top(8).h(24).gap(2).items_center().rounded(8).bg(paint("#fffdf8ee")).border(1).border_color(paint("#e6e2d8"))
+      .child(btn("zoom-out", "－", (cx) => this.zoomBy(1 / 1.25, null, cx))).child(btn("zoom-fit", "Fit all", (cx) => this.zoomFit(cx), 84)).child(btn("zoom-in", "＋", (cx) => this.zoomBy(1.25, null, cx)));
   }
   // ★90 (H): small, under the zoom buttons: the App is holding a lot of pictures and a restart is the sure way to give it back.
   memNotice(left) {
     if (!this.appMemWarn) return null;
     const panelW = (this.panelLeft != null ? Math.max(0, left.width - this.panelLeft) : 0) + this.rightTaken() + (this.rightTaken() > 0 ? ZOOM_GAP : 0);
-    return div().id("mem-restart").absolute().right(10 + panelW).top(36).h(20).px(8).flex().items_center().rounded(6).bg("#fff4e5ee").border(1).border_color("#e8c79a").text_size(11).text_color("#8a5a1f")
-      .child(`メモリ ${this.appMB ?? "?"}MB — App の再起動をおすすめ`);
+    return div().id("mem-restart").absolute().right(10 + panelW).top(36).h(20).px(8).flex().items_center().rounded(6).bg(paint("#fff4e5ee")).border(1).border_color(paint("#e8c79a")).text_size(11).text_color(paint("#8a5a1f"))
+      .child(`Memory ${this.appMB ?? "?"}MB — restarting the App is recommended`);
   }
 
   // Floor names (left-aligned at their label point) and team names; returned with their rectangles so bubbles can keep clear.
@@ -1973,11 +1974,11 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       if ((z.key === "approval" || z.key === "counter") && sc.windows?.[z.key]?.sign_at) continue; // the white standing sign says it (no second, black label)
       const m = /^team:(.+)$/.exec(z.key ?? "");
       const lead = m && byId.get(m[1]);
-      const meaning = { approval: "承認待ち", counter: "報告あり", lounge: "待機中" }[z.key];
-      const teamText = m && lead ? `${lead.name}${z.children ? ` · ワーカー ${z.children}人` : ""}` : ""; // the parent's display name (as in the Agents list); no parent in the list: no label
-      if (z.key === "lounge" && z.label_group && z.label) { add(`z-${z.key}`, `${z.title}（${meaning}）`, z.label[0], z.label[1], null, true, true); continue; } // ★65-1 (office-polish): right in front of the armchair groups (office.py's place), not at the rug's front edge
-      if (z.key === "lounge" && z.tiles?.length) { const q = z.tiles.map((t) => this.tileXY(sc, t)), cx_ = (Math.min(...q.map((v) => v[0])) + Math.max(...q.map((v) => v[0]))) / 2, by = Math.max(...q.map((v) => v[1])) + (sc.grid?.th ?? 20); add(`z-${z.key}`, `${z.title}（${meaning}）`, cx_, by, null, true, true); continue; } // in front of the rug (clear floor), not under the armchairs
-      add(`z-${z.key}`, m ? teamText : (meaning && z.title && !String(z.title).includes("（") ? `${z.title}（${meaning}）` : z.title), z.label?.[0] ?? 0, z.label?.[1] ?? 0, m ? TEAM[hash(m[1]) % TEAM.length] : null, true);
+      const meaning = { approval: "Blocked", counter: "Report", lounge: "Idle" }[z.key];
+      const teamText = m && lead ? `${lead.name}${z.children ? ` · ${z.children} worker${z.children === 1 ? "" : "s"}` : ""}` : ""; // the parent's display name (as in the Agents list); no parent in the list: no label
+      if (z.key === "lounge" && z.label_group && z.label) { add(`z-${z.key}`, `${z.title} (${meaning})`, z.label[0], z.label[1], null, true, true); continue; } // ★65-1 (office-polish): right in front of the armchair groups (office.py's place), not at the rug's front edge
+      if (z.key === "lounge" && z.tiles?.length) { const q = z.tiles.map((t) => this.tileXY(sc, t)), cx_ = (Math.min(...q.map((v) => v[0])) + Math.max(...q.map((v) => v[0]))) / 2, by = Math.max(...q.map((v) => v[1])) + (sc.grid?.th ?? 20); add(`z-${z.key}`, `${z.title} (${meaning})`, cx_, by, null, true, true); continue; } // in front of the rug (clear floor), not under the armchairs
+      add(`z-${z.key}`, m ? teamText : (meaning && z.title && !/[（(]/.test(String(z.title)) ? `${z.title} (${meaning})` : z.title), z.label?.[0] ?? 0, z.label?.[1] ?? 0, m ? TEAM[hash(m[1]) % TEAM.length] : null, true);
     }
     return out;
   }
@@ -2285,7 +2286,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
   // Usually a small tag (state mark + product name). Waiting for approval: a large bubble with a red count and a button.
   bubble(a, st, w, h, small, selected, team, shortText, fam = false, cmd = false) {
     const replying = a.status === "done" && String(this.people?.get(a.id)?.at) === "desk" && replyWaiting(this.reps?.get(a.id), a, !!this.scene?.desks?.[a.id]?.seat); // ★29-1 back at the seat after the report
-    const away = a.status === "blocked" ? "離席（承認）" : replying ? "返事待ち" : a.status === "done" ? "離席（報告）" : null;
+    const away = a.status === "blocked" ? "→ approve" : replying ? "Wants reply" : a.status === "done" ? "→ report" : null;
     const name = platform(a).name, border = selected ? 2 : 1.5;
     if (small) { // one line: state mark, session name, product icon; a small tail points at the person
       return v_flex().w(w).h(h).items_center()
@@ -2294,7 +2295,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
           .child(this.stateMark(st, 14))
           .when(cmd, (e) => e.child(div().flex_none().text_size(11).font_weight(700).text_color("#d4a017").child("★"))) // ★39 the commander (a parent with children)
           .child(div().flex_1().min_w(0).whitespace_nowrap().text_size(11).font_weight(600).text_color(P.ink).child(shortText ?? this.shortName(a)))
-          .when(!shortText && !!away, (e) => e.child(div().flex_none().text_size(11).text_color(a.status === "blocked" ? "#A24E00" : st.color).child(away))) // 22nd 21-N6: 離席（承認） in a dark orange (#F28C28 on the pale tag was hard to read); the size stays
+          .when(!shortText && !!away, (e) => e.child(div().flex_none().text_size(11).text_color(a.status === "blocked" ? paint("#A24E00") : st.color).child(away))) // 22nd 21-N6: 離席（承認） in a dark orange (#F28C28 on the pale tag was hard to read); the size stays
           .when(!shortText && !away && !!this.elapsedText(a), (e) => e.child(div().flex_none().text_size(11).text_color(st.color).child(this.elapsedText(a))))
           .when(!shortText, (e) => e.child(platformIcon(a, 12))))
         .child(div().h(7).text_size(8).text_color(st.color).child("▼"));
@@ -2313,7 +2314,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
           .child(div().flex_1().min_w(0).text_size(10).font_weight(600).text_color(st.color)
             .child(ask))
           .child(div().id(`approve-${a.id}`).flex_none().px(8).py(2).rounded(8).bg(st.color).text_size(10).font_weight(700).text_color("#ffffff")
-            .cursor_pointer().on_click(go).child("承認"))));
+            .cursor_pointer().on_click(go).child("Approve"))));
   }
 
   // The session name, cut short for a tag.
@@ -2351,10 +2352,10 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
   talkBubble(id, p, hx, hy, d, status = "working", dx = 0) {
     const talk = this.meetBubble?.(id, p); if (!talk) return null;
     const bw = talk.mine ? 40 : 28, bh = talk.mine ? 22 : 16, dw = talk.mine ? 9 : 6, ts = talk.mine ? 13 : 9, bx = this.talkBox(talk, hx, hy, d, status, dx);
-    const bubble = div().id(`talk-${id}`).absolute().left(bx.x).top(bx.y).w(bw).h(bh).flex().items_center().justify_center().gap(1).rounded(11).bg("#ffffff").border(1.5).border_color("#c9c2b2").opacity(talk.mine ? 1 : 0.5); // ★70-3 three dots lit 1 -> 2 -> 3 in turn
-    for (const n of TALK_DOTS) bubble.child(div().id(`talk-${id}-${n}`).w(dw).h(bh - 4).flex().items_center().justify_center().text_size(ts).font_weight(800).text_color("#4b5563").frames(talkDotFrames(n), TALK_DOT_MS));
+    const bubble = div().id(`talk-${id}`).absolute().left(bx.x).top(bx.y).w(bw).h(bh).flex().items_center().justify_center().gap(1).rounded(11).bg(paint("#ffffff")).border(1.5).border_color(paint("#c9c2b2")).opacity(talk.mine ? 1 : 0.5); // ★70-3 three dots lit 1 -> 2 -> 3 in turn
+    for (const n of TALK_DOTS) bubble.child(div().id(`talk-${id}-${n}`).w(dw).h(bh - 4).flex().items_center().justify_center().text_size(ts).font_weight(800).text_color(paint("#4b5563")).frames(talkDotFrames(n), TALK_DOT_MS));
     // ★101-7 a small tail under the middle pointing at the speaker's head (-dx: the tail stays on the head when the bubble stepped aside)
-    bubble.child(div().absolute().left(bw / 2 - 5 - dx).top(bh - 6).w(10).h(7).flex().items_center().justify_center().text_size(9).font_weight(900).text_color("#c9c2b2").child("▾"));
+    bubble.child(div().absolute().left(bw / 2 - 5 - dx).top(bh - 6).w(10).h(7).flex().items_center().justify_center().text_size(9).font_weight(900).text_color(paint("#c9c2b2")).child("▾"));
     return bubble;
   }
 
@@ -2372,10 +2373,10 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
 
   // Minutes in this state, short ("12分", "2時間"); a child that reported back shows 待機中・報告済み (13th D3: the top chip says 待機中 for the same person).
   elapsedText(a) {
-    if (a.handed_back && a.status === "idle") return "待機中・報告済み";
+    if (a.handed_back && a.status === "idle") return "Idle · reported";
     const m = Math.floor((Date.now() - (a.since ?? Date.now())) / 60000);
     if (m < 1) return "";
-    return m < 60 ? `${m}分` : `${Math.floor(m / 60)}時間`;
+    return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`;
   }
 
   // Pointing at someone (or its tag): product, the latest line, how long, the model, and the way into the conversation.
@@ -2391,18 +2392,18 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     const x = Math.max(6, Math.min(left.width - W - 6, r.x + r.w / 2 - W / 2));
     const y = r.y - H - 6 >= 4 ? r.y - H - 6 : r.y + r.h + 6;
     const frac = Math.min(1, mins / 60); // no progress data: the bar is the time in this state (full at an hour)
-    return v_flex().id("hover-card").absolute().left(x).top(y).w(W).h(H).p(10).gap(6).rounded(12).bg(P.paper).border(1).border_color("#e6e2d8")
+    return v_flex().id("hover-card").absolute().left(x).top(y).w(W).h(H).p(10).gap(6).rounded(12).bg(P.paper).border(1).border_color(paint("#e6e2d8"))
       .on_hover((h, cx) => { this.cardIn = h; if (!h) this.hoverOver(a.id, false, cx); })
       .child(h_flex().gap(6).items_center().child(this.stateMark(st, 16))
         .child(div().flex_1().min_w(0).truncate().text_size(12).font_weight(700).text_color(P.ink).child(platform(a).name))
         .child(div().flex_none().text_size(10).text_color(P.muted).child(a.model_label ?? "")))
       .child(div().truncate().text_size(11).text_color(P.ink).child(say))
       .child(v_flex().gap(3)
-        .child(div().w_full().h(5).rounded(3).bg("#ece8dd").child(div().h_full().w(Math.max(4, (W - 20) * frac)).rounded(3).bg(st.color)))
-        .child(div().text_size(10).text_color(P.muted).child(`${st.label}${a.unknown ? "?" : ""} ${mins}分`)))
+        .child(div().w_full().h(5).rounded(3).bg(paint("#ece8dd")).child(div().h_full().w(Math.max(4, (W - 20) * frac)).rounded(3).bg(st.color)))
+        .child(div().text_size(10).text_color(P.muted).child(`${st.label}${a.unknown ? "?" : ""} ${mins}m`)))
       .child(div().id("hover-open").w_full().h(26).flex().items_center().justify_center().rounded(8).bg(P.blue).cursor_pointer()
         .on_click((_e, cx) => { this.cardIn = false; this.hoverId = null; this.select(a, cx); })
-        .child(div().text_size(11).font_weight(700).text_color("#ffffff").child("会話を開く")));
+        .child(div().text_size(11).font_weight(700).text_color("#ffffff").child("Open chat")));
   }
 
   // ---------------------------------------------------------------- selection and side panel

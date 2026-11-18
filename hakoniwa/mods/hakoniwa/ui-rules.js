@@ -85,7 +85,7 @@ export const chipAction = (n) => n <= 0 ? "none" : n === 1 ? "direct" : "list";
 export const CHIP_LIST = { w: 360, maxRows: 8, pad: 8, row: 56 };
 // ★103 (polish): a count with 2+ people shows "▾" (a press opens the list). 14px caret + the pill's 7px gap = CARET_W, counted in bandNeed.
 export const CARET = "▾", CARET_W = 14 + 7;
-export const PANEL_HINT = "ドラッグで部屋を移動";
+export const PANEL_HINT = "Drag to move between rooms";
 export const showCaret =(n) => chipAction(n) === "list";
 export const chipListHeight = (n) => Math.min(n, CHIP_LIST.maxRows) * CHIP_LIST.row + CHIP_LIST.pad * 2;
 // The band's needed width at a given step, to check 1400 / 1100 px by calculation (the App can't be shot here). All numbers are the drawn sizes in main.js band().

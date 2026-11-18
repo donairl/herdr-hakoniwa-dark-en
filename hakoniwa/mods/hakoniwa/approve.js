@@ -208,10 +208,10 @@ export const inboxNeedsRead = (rows, entryOf, lastAt, now, gap = 4000) =>
   (Array.isArray(rows) ? rows : []).filter((a) => a?.status === "blocked" && a.address && !inboxWhat(entryOf(a)) && now - ((lastAt ?? {})[a.id] ?? 0) >= gap);
 
 export const REASON_TEXT = {
-  unreadable: "確認の画面を読み取れません。端末で答えてください",
-  "no-option": "この画面には押せる選択肢が見つかりません。端末で答えてください",
-  "send-failed": "キーを送れませんでした。端末で答えてください",
-  unchanged: "押しましたが状態が変わりません。端末の画面を確かめてください",
+  unreadable: "Cannot read the confirmation screen. Please answer in the terminal",
+  "no-option": "No option to press was found on this screen. Please answer in the terminal",
+  "send-failed": "Could not send the key. Please answer in the terminal",
+  unchanged: "Pressed, but the state did not change. Please check the terminal screen",
 };
 // 18th F5 (inbox.js): the two lines of a report row.
 // 20th H6: a model in brackets at the end ("Claude Code（Opus 5.5）") is not part of the name: the name is "Claude Code", the model goes after the room (reportModel).

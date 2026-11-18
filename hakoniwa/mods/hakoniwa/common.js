@@ -1,6 +1,7 @@
 // hakoniwa: shared state model, colours and small helpers (used by every part).
 import { div, svg, image } from "gpui-kit";
 import { answeredNow } from "./approve.js";
+import { isDark, paint, darkOf, darkWash } from "./palette.js";
 
 // ★25-1: the box of a right-hand overlay (the terminal window / the side panel), from the window's real size:
 // the right edge is 8px inside the window, the width at most 40% of the window.
@@ -31,11 +32,14 @@ export function rightOverlayBox(vw, vh, top = 60, want = 720, maxFrac = 0.4, edg
 //   done     報告待ち  turn finished, result not looked at yet       -> submission counter, holding papers
 //   idle     待機      looked at, or no task yet (TUI "unknown" too) -> lounge sofa; long_idle (60 min+) dozes
 // The collector and items() normalise every status to one of these keys.
+// `color` (the state's identity) is the same in light and dark; `wash` (its pale tint) is a dark tint in dark (palette.js).
+const state = (key, label, color, wash, place) => ({ key, label, color, place, lightWash: wash,
+  get wash() { return isDark() ? darkWash(this.color) : this.lightWash; }, set wash(v) { this.lightWash = v; } });
 export const STATES = [
-  { key: "blocked", label: "承認待ち", color: "#F28C28", wash: "#FFF1DF", place: "approval" },
-  { key: "working", label: "作業中", color: "#2F80ED", wash: "#E6F0FD", place: "desk" },
-  { key: "done", label: "報告あり", color: "#27AE60", wash: "#E3F5EA", place: "counter" },
-  { key: "idle", label: "待機中", color: "#8A94A6", wash: "#ECEFF3", place: "lounge" },
+  state("blocked", "Blocked", "#F28C28", "#FFF1DF", "approval"),
+  state("working", "Working", "#2F80ED", "#E6F0FD", "desk"),
+  state("done", "Report", "#27AE60", "#E3F5EA", "counter"),
+  state("idle", "Idle", "#8A94A6", "#ECEFF3", "lounge"),
 ];
 export const STATE = Object.fromEntries(STATES.map((s) => [s.key, s]));
 export const LONG_IDLE_MS = 60 * 60 * 1000; // a look (dozing, faded bubble), not a state
@@ -88,7 +92,12 @@ export const PLATFORM = {
   gemini: { name: "Gemini", icon: "icons/gemini.svg", tint: "#1a73e8" },
 };
 export const REFRESH_MS = 4000;
-export const P = { ink: "#1F2A37", muted: "#7b8494", line: "#e6e2d8", bg: "#f6f3ec", white: "#ffffff", paper: "#FFFDF8", blue: "#1E6FE0" };
+// The shared UI colours. Each name reads the light or the dark value for the appearance now (palette.js); config's office.colors.ui
+// (applyColors) sets the light ones.
+const P_LIGHT = { ink: "#1F2A37", muted: "#7b8494", line: "#e6e2d8", bg: "#f6f3ec", white: "#ffffff", paper: "#FFFDF8", blue: "#1E6FE0" };
+const P_DARK = { ink: darkOf("#1F2A37"), muted: darkOf("#7b8494"), line: darkOf("#e6e2d8"), bg: darkOf("#f6f3ec"), white: darkOf("#ffffff"), paper: darkOf("#FFFDF8"), blue: darkOf("#1E6FE0") };
+export const P = {};
+for (const k of Object.keys(P_LIGHT)) Object.defineProperty(P, k, { enumerable: true, get: () => (isDark() ? P_DARK : P_LIGHT)[k], set: (v) => { P_LIGHT[k] = v; } });
 
 export const dot = (color, size = 7) => div().size(size).rounded(size).bg(color).flex_none();
 export const chip = (color, size = 8) => div().size(size).rounded(2).bg(color).flex_none();
@@ -98,20 +107,20 @@ export const badge = (text, color, filled = false) => div().flex_none().px(5).py
 export const clock = (ms) => { const d = new Date(ms); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`; };
 export const ago = (ms) => {
   const m = Math.floor((Date.now() - ms) / 60000);
-  return m < 1 ? "今" : m < 60 ? `${m}分` : `${Math.floor(m / 60)}時間${m % 60 ? `${m % 60}分` : ""}`;
+  return m < 1 ? "now" : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}`;
 };
 export const platform = (a) => PLATFORM[a.app] ?? { name: a.program?.name ?? a.app ?? "agent", icon: a.program?.icon ?? "icons/agent.svg",
   tint: a.program?.tint ? "#374151" : undefined };
 export const platformIcon = (a, size) => {
   const p = platform(a);
-  return (p.tint ? svg(p.icon).text_color(p.tint) : image(p.icon)).size(size).flex_none();
+  return (p.tint ? svg(p.icon).text_color(paint(p.tint)) : image(p.icon)).size(size).flex_none(); // a one-colour mark: light on dark (palette.js)
 };
 // Memory of an agent's process tree ("350MB", "1.2GB"). undefined: not measured yet (show nothing); null: cannot be measured ("—").
 export const fmtMem = (b) => b == null ? "—" : b >= 1073741824 ? `${(b / 1073741824).toFixed(1)}GB` : `${Math.max(1, Math.round(b / 1048576))}MB`;
 export const hasMem = (a) => a.mem_bytes !== undefined;
 // Candidates to clean up (long waits that hold memory): state.cleanup.ids, biggest first; lit up only on request.
 export const cleanupIds = (state) => state?.cleanup?.ids ?? [];
-export const blockedText = (a) => a.blocked_msg || (a.blocked_kind ? `承認（${a.blocked_kind}）` : "承認待ち");
+export const blockedText = (a) => a.blocked_msg || (a.blocked_kind ? `Needs approval (${a.blocked_kind})` : "Needs approval");
 // ★62-2 a tile of a picture cut into tiles, on whole pixels: both edges are rounded (so the right edge of one tile is the left edge of the next at every zoom),
 // and `over` px more on the right and the bottom for an opaque tile (the next tile is drawn over it). Returns [left, top, width, height].
 export const snapBox = (ox, oy, k, r, over = 0) => {
@@ -138,9 +147,9 @@ export const fitZoom = (sc, W, H) => {
 // ★61 (C8's morning pictures): the first plan for a new cast / size can pass the App's 30 s limit while the pictures are made; the next run
 // goes on from what was written. So the first failures say "being prepared" (with how long so far), and only a run of `limit` failures says the error.
 export function planWaitText(error, fails = 0, since = null, now = Date.now(), limit = 3) {
-  if (error && fails >= limit) return `描けません: ${error}`;
+  if (error && fails >= limit) return `Cannot draw: ${error}`;
   const s = since ? Math.max(0, Math.round((now - since) / 1000)) : 0;
-  return error || s >= 10 ? `オフィスを準備中…（人と家具の絵を作っています${s ? ` ${s}秒` : ""}）` : "オフィスを準備中…";
+  return error || s >= 10 ? `Preparing the office… (drawing people and furniture${s ? ` ${s}s` : ""})` : "Preparing the office…";
 }
 // ★62-2 a tile cut with `bleed` px of its neighbours (office.py): `clip` is the tile's own rect on whole pixels (snapBox), `img` the whole picture
 // inside that clip (relative to it), so the border the App smears when it zooms a picture lies outside the clip. A tile without bleed: clip = null.

@@ -2,6 +2,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { appHome, closeOverlay, exec, openOverlay, props, readTextFile, setShared, shared, writeTextFile } from "herdr";
+import { paint } from "./palette.js"; // light -> dark UI colours (follows the appearance)
 // 13th B6: `window` is the ambient gpui Window. Importing `window` from "herdr" (a function: titlebar info) hid it, so viewport_size() threw and winSize() / publishWin() never worked.
 const vpSize = () => { try { const v = globalThis.window?.viewport_size?.(); return v && v.width > 0 ? v : null; } catch { return null; } };
 import { STATE, P, ago, clock, RIGHT_POP_GAP } from "./common.js";
@@ -9,7 +10,7 @@ import { UI } from "./ui-rules.js";
 import { icon } from "./icons.js";
 import { FEED_FILTERS, trackMoves, addMoves, filterMoves, parseLog, parseOpenCode } from "./feed-rules.js";
 
-const FEED_W = 460, FEED_H = 420, FOOTER_H = 40, FEED_BTN_X = 378 /* where the footer button starts (measured 378 in the 17:23 picture; 440 was a guess) */, USAGE_W = 340, WIN_DEFAULT = { w: 1920, h: 1152 } /* the window measured in usability104 (last resort for `at`) */, STATE_WORD = { working: "作業中", idle: "待機", blocked: "承認待ち", done: "報告" };
+const FEED_W = 460, FEED_H = 420, FOOTER_H = 40, FEED_BTN_X = 330 /* where the footer button starts (measured 378 in the 17:23 picture with the Japanese labels; ~330 estimated for the shorter English "Agents" / "Spaces" / "Updated" facts) */, USAGE_W = 340, WIN_DEFAULT = { w: 1920, h: 1152 } /* the window measured in usability104 (last resort for `at`) */, STATE_WORD = { working: "Working", idle: "Idle", blocked: "Blocked", done: "Report" };
 export const POP_KINDS = ["feed", "usage", "chip", "inbox"];
 const stateWord = (k) => STATE[k]?.label ?? STATE_WORD[k] ?? String(k);
 
@@ -120,12 +121,12 @@ export class FeedPart {
   // Footer button "最近の動き": opens the list upward from the button (the floor is not narrowed).
   feedButton() {
     const n = this.fd?.log?.length ?? 0;
-    return h_flex().id("feed-open").flex_none().h(UI.hit).px(12).gap(8).items_center().rounded(8).border(1.5).border_color(P.line).bg("#ffffff")
-      .cursor_pointer().hover((s) => s.bg("#f0ede4"))
+    return h_flex().id("feed-open").flex_none().h(UI.hit).px(12).gap(8).items_center().rounded(8).border(1.5).border_color(P.line).bg(paint("#ffffff"))
+      .cursor_pointer().hover((s) => s.bg(paint("#f0ede4")))
       .on_mouse_down("left", (e) => { this.fd.at = e?.position ?? null; this.fd.btn = e?.bounds ?? null; })
       .on_click(() => this.openFeed())
       .child(icon("legend", 18, P.muted))
-      .child(div().text_size(UI.text.small).font_weight(700).text_color(P.ink).child("最近の動き"))
+      .child(div().text_size(UI.text.small).font_weight(700).text_color(P.ink).child("Recent"))
       .when(n > 0, (el) => el.child(div().text_size(UI.text.small).text_color(P.muted).child(String(n))));
   }
 
@@ -134,12 +135,12 @@ export class FeedPart {
     const p = props(), log = Array.isArray(p.log) ? p.log : [], key = this.fdFilter ?? "all", rows = filterMoves(log, key);
     // 8th Y3: a popup is as big as its content, so the box has a height of its own and the list a fixed one (flex_1 + min_h(0) made it 0 high: only the tabs showed)
     const listH = FEED_H - 20 - UI.seg - 8;
-    return v_flex().id("feed-pop").w_full().h(FEED_H).flex_none().p(10).gap(8).bg("#ffffff")
+    return v_flex().id("feed-pop").w_full().h(FEED_H).flex_none().p(10).gap(8).bg(paint("#ffffff"))
       .on_key_down((e, c) => { if (e.key === "escape") { closeOverlay(p.overlay); c.stop_propagation(); } })
       .child(h_flex().flex_none().gap(6).items_center()
         .children(FEED_FILTERS.map((f) => div().id(`ff-${f.key}`).flex_none().h(UI.seg).px(12).flex().items_center().rounded(8).cursor_pointer()
           .text_size(UI.text.small).when(key === f.key, (el) => el.bg(P.blue).font_weight(700).text_color("#ffffff"))
-          .when(key !== f.key, (el) => el.text_color(P.muted).hover((s) => s.bg("#f0ede4")))
+          .when(key !== f.key, (el) => el.text_color(P.muted).hover((s) => s.bg(paint("#f0ede4"))))
           .on_click(() => { this.fdFilter = f.key; cx.notify(); }).child(f.label))))
       .child(v_flex().id("feed-rows").flex_none().h(listH).overflow_y_scrollbar().gap(2)
         .children(rows.length ? rows.map((e, i) => {
@@ -149,9 +150,9 @@ export class FeedPart {
             .child(st ? this.stateMark(st, 20) : div().flex_none().w(20))
             .child(v_flex().flex_1().min_w(0)
               .child(div().truncate().text_size(UI.text.small).font_weight(700).text_color(P.ink).child(e.name))
-              .child(div().truncate().text_size(UI.text.small).text_color(st?.color ?? P.muted).child(`${stateWord(e.from)} → ${stateWord(e.to)}・${ago(e.at)}前`))
+              .child(div().truncate().text_size(UI.text.small).text_color(st?.color ?? P.muted).child(`${stateWord(e.from)} → ${stateWord(e.to)} · ${((t) => (t === "now" ? t : `${t} ago`))(ago(e.at))}`))
               .when(!!e.msg, (el) => el.child(div().truncate().text_size(UI.text.small).text_color(P.muted).child(e.msg))));
-        }) : [div().p(10).text_size(UI.text.small).text_color(P.muted).child(log.length ? "この絞り込みに当てはまる動きはありません" : "まだ動きがありません（状態が変わると、ここに並びます）")]));
+        }) : [div().p(10).text_size(UI.text.small).text_color(P.muted).child(log.length ? "Nothing matches this filter" : "No activity yet (state changes will appear here)")]));
   }
 
   // The usage icon: reads OpenCode's own record first (a few ms, read only), then opens the popup with all three services.

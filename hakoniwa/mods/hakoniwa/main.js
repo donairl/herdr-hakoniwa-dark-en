@@ -25,6 +25,7 @@ import { MeetPart } from "./meet.js";
 import { PanelPart } from "./panel.js";
 import { FeedPart } from "./feed.js";
 import { fmtTokens } from "./feed-rules.js";
+import { paint, syncAppearance, uiTheme, isDark } from "./palette.js"; // light -> dark UI colours (follows the appearance)
 
 const FADE_MS = 0; // no fade: a fade from 0 shows the empty beige ground for ~100 ms (reviews 5); the switch is immediate
 
@@ -112,7 +113,7 @@ class AgentHud extends View {
     // before any title: "Claude Code（Opus 5.5）"-like (the kind and the model)
     if (word) return word;
     const m = this.feed.state?.agents?.find((x) => x.address === n.address)?.model_label;
-    return `${n.program?.name || n.address}${m ? `（${m}）` : ""}`;
+    return `${n.program?.name || n.address}${m ? ` (${m})` : ""}`;
   }
 
   // ★108: config.json is optional (a copy from the layout collection has none): what it leaves out is filled by config-defaults.js
@@ -126,7 +127,7 @@ class AgentHud extends View {
       this.feed.error = problemText(problem, config.python);
       if (problem === "python") return; // nothing can run: the band says why
       this.feed.config = config; applyRoomTitles(config); applyColors(config); applyLaunchKinds(config);
-    } catch (e) { this.feed.error = `設定を読めません: ${e}`; }
+    } catch (e) { this.feed.error = `Cannot read the settings: ${e}`; }
   }
 
   // Made-up agents (collector --demo -> state-demo.json): shared flag, else config.json "demo".
@@ -159,8 +160,8 @@ class AgentHud extends View {
     cx.spawn(async (cx) => {
       try {
         const r = await exec(c.python, this.demo() ? [c.collector, "--demo", ...(Array.isArray(c.demo_args) ? c.demo_args.map(String) : [])] : [c.collector]);
-        this.feed.error = r.code ? `集約に失敗: ${(r.stderr || "").trim().split("\n").pop()}` : null;
-      } catch (e) { this.feed.error = `集約を起動できません: ${e}`; }
+        this.feed.error = r.code ? `Collector failed: ${(r.stderr || "").trim().split("\n").pop()}` : null;
+      } catch (e) { this.feed.error = `Cannot start the collector: ${e}`; }
       this.feed.busy = false;
       if (await this.load() || this.feed.error) cx.notify();
     });
@@ -211,25 +212,34 @@ class AgentHud extends View {
       ...list.filter((a) => a.status === "done").sort((a, b) => b.since - a.since)];
   }
 
+  // No `key`: Herdr would remember a dragged spot for it and reopen there, even half off-screen. One chat window at a time
+  // instead (the last id is shared across this mod's blocks); it opens centered, can still be dragged while it is open.
   openChat(a) {
-    openOverlay({ mod: "hakoniwa", kind: "window", key: "hakoniwa-chat", width: 640, height: 660,
+    const prev = shared("hakoniwa.chatWin");
+    if (prev != null) { try { closeOverlay(prev); } catch {} }
+    const id = openOverlay({ mod: "hakoniwa", kind: "window", width: 640, height: 660,
       props: { role: "chat", id: a.id, name: a.name, source: a.source, address: a.address, app: a.app,
                model: a.model_label, color: a.color } });
+    setShared("hakoniwa.chatWin", id ?? null);
   }
 
   render(cx) {
+    syncAppearance(); // light or dark for this draw (palette.js); Herdr draws again when the theme / appearance changes
     const role = props()?.role ?? "board";
     if (role === "pane") return this.paneHeader();
     if (role === "chat") return this.chatView();
-    if (role === "detail") return this.detailView();
-    if (role === "pick-head") return this.pickHeadView(); // ★81 (chat.js)
+    // The right window (key "hakoniwa-term") is docked by `at`; a press the mod doesn't stop would drag it, and Herdr then
+    // remembers that spot over `at`, so the window opens half off-screen afterwards. Its blocks stop presses: no drag.
+    const pin = (el) => (el && typeof el.on_mouse_down === "function" ? el.on_mouse_down("left", (_e, cx2) => cx2.stop_propagation()) : el);
+    if (role === "detail") return pin(this.detailView());
+    if (role === "pick-head") return pin(this.pickHeadView()); // ★81 (chat.js)
+    if (role === "chat-approve") return pin(this.approveBlockView());
+    if (role === "chat-input") return pin(this.composerView());
     if (role === "rhead") return this.regionHeadView(); // ★103-3 (region.js)
     if (role === "inbox") return this.inboxView(); // ★106 ②
     if (role === "rchat") return this.chatBodyView();
     if (role === "rtree") return this.treeBodyView();
     if (role === "chat-body") return this.chatBodyView(); // ★84 (detail.js)
-    if (role === "chat-approve") return this.approveBlockView(); // 13th D1: the approval card above the input (detail.js)
-    if (role === "chat-input") return this.composerView(); // X1: the input under the conversation window (detail.js)
     if (role === "tree-body") return this.treeBodyView();
     if (role === "agent-menu") return this.agentMenuView();
     if (role === "confirm") return this.confirmView();
@@ -272,7 +282,7 @@ class AgentHud extends View {
   // ------------------------------------------------------------- HUD band
 
   band(list) {
-    const t = theme();
+    const t = uiTheme();
     const count = (k) => list.filter((a) => a.status === k).length;
     const picked = shared("hakoniwa.pick")?.state;
     // self-review-0505 #1: a narrow window (the App split in two) clipped the counts first. The band measures itself:
@@ -285,7 +295,7 @@ class AgentHud extends View {
       const pos = picked === st.key && n > 1 ? chipPeople(list, st.key).findIndex((a) => a.id === cur?.id) + 1 : 0;
       const zero = n === 0; // ★104 U11: a count of 0 does nothing -> faint, no hand cursor, no hover
       const sel = picked === st.key && n > 0; // ★105 head: every chip has a frame (1.5px line); the chosen one a blue frame
-      return h_flex().id(`pill-${st.key}`).flex_none().gap(7).px(11).h(UI.pill).items_center().rounded(10).border(sel ? 2 : 1.5).border_color(sel ? P.blue : P.line).bg("#ffffff")
+      return h_flex().id(`pill-${st.key}`).flex_none().gap(7).px(11).h(UI.pill).items_center().rounded(10).border(sel ? 2 : 1.5).border_color(sel ? P.blue : P.line).bg(paint("#ffffff"))
         .when(sel, (el) => el.bg(st.wash)).when(zero, (el) => el.opacity(0.45)).when(!zero, (el) => el.cursor_pointer().hover((s) => s.bg(st.wash))) // #2: a count of 0 is never shown as chosen
         .on_mouse_down("left", (e) => { this.chipBox = e?.bounds ?? null; })
         .on_size_change((size) => { const w = Math.round(size?.width ?? 0), prev = shared("hakoniwa.chipw") ?? {}; if (w > 0 && prev[st.key] !== w) setShared("hakoniwa.chipw", { ...prev, [st.key]: w }); }) // 15th E3: each chip's real width (room.js adds them up for a command)
@@ -293,16 +303,17 @@ class AgentHud extends View {
         .child(st.key === "blocked" && n > 0 ? this.stateMark(st, 26).loop("opacity", { from: 0.55, to: 1, period: 700 }) : this.stateMark(st, 26)) // ★92 waiting approvals pulse in the band (a native loop, no redraw)
         .when(!narrow, (el) => el.child(div().text_size(UI.text.chip).font_weight(700).text_color(P.ink).child(st.label)))
         .child(st.key === "blocked" && n > 0 ? div().text_size(UI.text.count).font_weight(800).text_color(st.color).child(String(n)).loop("opacity", { from: 0.55, to: 1, period: 700 }) : div().text_size(UI.text.count).font_weight(800).text_color(st.color).child(String(n)))
-        .when(pos > 0, (el) => el.child(div().text_size(UI.text.small).text_color("#a8a396").child(`${pos}/${n}`))) // ★104 V8: the "3/5" place is a faint figure (it is not the count)
+        .when(pos > 0, (el) => el.child(div().text_size(UI.text.small).text_color(paint("#a8a396")).child(`${pos}/${n}`))) // ★104 V8: the "3/5" place is a faint figure (it is not the count)
         .when(showCaret(n), (el) => el.child(div().text_size(UI.text.small).text_color(P.muted).child(CARET))); // ★103 polish: 2+ people -> a press opens the list
     };
     const claude = list.some((a) => platform(a).name === "Claude Code");
-    const root = h_flex().id("hud-band").size_full().px(16).gap(12).items_center().bg("#ffffff").rounded(14)
+    const root = h_flex().id("hud-band").size_full().px(16).gap(12).items_center().bg(paint("#ffffff")).rounded(14)
       .on_size_change((size, cx) => { const was = this.bandW ?? 1920, now = size?.width ?? was; this.bandW = now; if ((was < 1500) !== (now < 1500) || (was < 1250) !== (now < 1250)) cx.notify(); }) // redraw only when the step changes
       .border(1).border_color(P.line).text_color(P.ink)
       .child(h_flex().flex_none().gap(8).items_center()
-        .child(tight ? image(`${ICON_DIR}/hakoniwa-head.png`).id("hakoniwa-logo").flex_none().w(LOGO_HEAD).h(LOGO_HEAD) : image(`${ICON_DIR}/hakoniwa-logo.png`).id("hakoniwa-logo").flex_none().w(LOGO_W).h(LOGO_H)) // ★104 the logo (Hakoniwa) replaces the 3 bars + "AI Office"
-        .when(this.demo(), (el) => el.child(badge("デモ", STATE.blocked.color))))
+        .child((() => { const logo = tight ? image(`${ICON_DIR}/hakoniwa-head.png`).id("hakoniwa-logo").flex_none().w(LOGO_HEAD).h(LOGO_HEAD) : image(`${ICON_DIR}/hakoniwa-logo.png`).id("hakoniwa-logo").flex_none().w(LOGO_W).h(LOGO_H);
+          return isDark() ? div().id("hakoniwa-logo-plate").flex_none().px(6).py(2).rounded(10).bg("#f3efe7").child(logo) : logo; })()) // dark mode: the logo's navy lettering needs a light plate // ★104 the logo (Hakoniwa) replaces the 3 bars + "AI Office"
+        .when(this.demo(), (el) => el.child(badge("Demo", STATE.blocked.color))))
       .child(div().w(1).h(26).bg(P.line).flex_none())
       .child(h_flex().flex_1().min_w(0).gap(2).items_center().children(STATES.map((st) => pill(st)))
         .when(this.cleanupN() > 0, (el) => el.child(this.cleanupPill(narrow))))
@@ -336,10 +347,10 @@ class AgentHud extends View {
   // Popup body (role "state-list"): one row per person (state mark, name, room, how long in this state); a row picks that person and closes.
   stateListView() {
     const p = props(), st = STATE[p.state], people = Array.isArray(p.people) ? p.people : [];
-    return v_flex().id("state-list").size_full().p(CHIP_LIST.pad).gap(0).bg("#ffffff").overflow_y_scrollbar()
+    return v_flex().id("state-list").size_full().p(CHIP_LIST.pad).gap(0).bg(paint("#ffffff")).overflow_y_scrollbar()
       .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(p.overlay); cx.stop_propagation(); } })
       .children(people.map((a) => h_flex().id(`sl-${a.id}`).w_full().flex_none().h(CHIP_LIST.row).px(8).gap(8).items_center().rounded(8).cursor_pointer()
-        .hover((s) => s.bg(st?.wash ?? "#f3efe4"))
+        .hover((s) => s.bg(st?.wash ?? paint("#f3efe4")))
         .on_click(() => { setShared("hakoniwa.pick", { state: p.state, id: a.id, at: Date.now() }); closeOverlay(p.overlay); })
         .child(st ? this.stateMark(st, 22) : dot(P.muted, 10))
         .child(v_flex().flex_1().min_w(0)
@@ -353,18 +364,18 @@ class AgentHud extends View {
 
   cleanupPill(narrow = false) {
     const c = this.feed.state?.cleanup, on = shared("hakoniwa.cleanup") === true;
-    const total = c?.total_bytes && !narrow ? `（測れた分 ${fmtMem(c.total_bytes)}）` : ""; // narrow band: the count only
+    const total = c?.total_bytes && !narrow ? ` (measured ${fmtMem(c.total_bytes)})` : ""; // narrow band: the count only
     // 24th Q8: checked in the code: candidates = people idle for 60 min or more (hakoniwa-collector.py cleanup_list, long_idle), biggest memory first; "測れた分" = the sum of the memory that could be measured.
     // Pressing only toggles shared "hakoniwa.cleanup" (their cards get a red frame and come first); nothing is closed or deleted here.
-    const tip = "60分以上待機している人の数です（測れた分は、メモリを測れた人の合計）。押すと、その人たちのカードが赤い枠で先頭に並びます。押しても何も閉じず、消えません。もう一度押すと元に戻ります";
+    const tip = "The number of agents idle for 60 minutes or more (measured = the total memory of those whose memory could be measured). Pressing puts their cards first with a red frame. Nothing is closed or removed. Press again to undo";
     return h_flex().id("cleanup-pill").tooltip(tip).flex_none().ml(8).px(12).h(UI.pill - 2).gap(6).items_center().rounded(10)
-      .bg(on ? "#EFE9DA" : "#F3F0E8").cursor_pointer() // 4th W4: no border, a pale ground, ordinary text (the orange "waiting" chip stays the loudest); only a slightly deeper ground while lit
-      .hover((s) => s.bg(on ? "#E6DFCC" : "#EAE5D8")).on_click(() => setShared("hakoniwa.cleanup", !on))
+      .bg(on ? paint("#EFE9DA") : paint("#F3F0E8")).cursor_pointer() // 4th W4: no border, a pale ground, ordinary text (the orange "waiting" chip stays the loudest); only a slightly deeper ground while lit
+      .hover((s) => s.bg(on ? paint("#E6DFCC") : paint("#EAE5D8"))).on_click(() => setShared("hakoniwa.cleanup", !on))
       .child(div().flex_none().relative().w(15).h(13) // a small treasure chest: domed lid, band, lock
         .child(div().absolute().left(0).top(0).w(15).h(6).rounded_t(7).bg("#b0702e").border(1).border_color("#5c3410"))
         .child(div().absolute().left(0).top(6).w(15).h(7).bg("#8a4f1d").border(1).border_color("#5c3410"))
         .child(div().absolute().left(0).top(5).w(15).h(2).bg("#f2c94c")).child(div().absolute().left(6).top(5).w(3).h(4).rounded(1).bg("#fff3b0").border(1).border_color("#a07a14")))
-      .child(div().text_size(UI.text.small).font_weight(400).text_color(P.ink).child(`片付け候補 ${this.cleanupN()}${total}`));
+      .child(div().text_size(UI.text.small).font_weight(400).text_color(P.ink).child(`Cleanup ${this.cleanupN()}${total}`));
   }
 
   // Office / Board in one layout: sets shared "hakoniwa.view" ("office" is the default).
@@ -373,12 +384,12 @@ class AgentHud extends View {
     // ★105-3 (3rd): line pictures (icons/office.svg・board.svg) instead of the ▦ ☰ glyphs
     const seg = (key, label) => div().id(`view-${key}`).flex_none().px(14).h(UI.seg).flex().items_center().gap(6).rounded(8)
       .text_size(UI.text.body).cursor_pointer().when(view === key, (el) => el.bg(P.blue).font_weight(700).text_color("#ffffff"))
-      .when(view !== key, (el) => el.text_color(P.muted).hover((s) => s.bg("#f0ede4")))
+      .when(view !== key, (el) => el.text_color(P.muted).hover((s) => s.bg(paint("#f0ede4"))))
       .on_click(() => { setShared("hakoniwa.view.at", Date.now()); setShared("hakoniwa.view", key); })
       .child(icon(key === "office" ? "office" : "board", 18, view === key ? "#ffffff" : P.muted))
       .when(!tight, (el) => el.child(label));
-    return h_flex().flex_none().gap(2).p(2).rounded(10).border(1).border_color(P.line).bg("#ffffff")
-      .child(seg("office", "オフィス")).child(seg("board", "カンバン"));
+    return h_flex().flex_none().gap(2).p(2).rounded(10).border(1).border_color(P.line).bg(paint("#ffffff"))
+      .child(seg("office", "Office")).child(seg("board", "Kanban"));
   }
 
   usage(t, tight = false) {
@@ -386,17 +397,17 @@ class AgentHud extends View {
     const stale = (w) => w?.resets_at != null && Number(w.resets_at) < Date.now(); // past its reset time: not true any more
     const pct = stale(u?.session) ? null : u?.session?.percent;
     const age = pct == null ? null : usageAge(u, Date.now());   // ★88-6 old figure: grey and "N min ago"
-    const color = pct == null || age ? t.muted : pct < 60 ? STATE.done.color : pct < 85 ? STATE.blocked.color : "#D64545";
+    const color = pct == null || age ? t.muted : pct < 60 ? STATE.done.color : pct < 85 ? STATE.blocked.color : paint("#D64545");
     const err = this.feed.error || Object.values(this.feed.state?.errors ?? {})[0];
     return v_flex().flex_none().w(tight ? 130 : 210).gap(3)
       .child(h_flex().items_center().gap(8) // ★105 head: "使用量 41%" (label, then the % in the state colour), the bar under it
-        .child(div().text_size(UI.text.small).font_weight(700).text_color(P.ink).child("使用量"))
-        .when(this.demo(), (el) => el.child(badge("デモ", STATE.blocked.color)))
+        .child(div().text_size(UI.text.small).font_weight(700).text_color(P.ink).child("Usage"))
+        .when(this.demo(), (el) => el.child(badge("Demo", STATE.blocked.color)))
         .child(div().text_size(UI.text.body).font_weight(800).text_color(color).child(pct == null ? "—" : `${pct}%`)))
-      .child(div().w_full().h(8).rounded(4).bg("#e9e5da")
+      .child(div().w_full().h(8).rounded(4).bg(paint("#e9e5da"))
         .child(div().h_full().w(Math.max(0, Math.min(100, pct ?? 0)) * (tight ? 1.3 : 2.1)).rounded(4).bg(color)))
-      .child(div().truncate().text_size(UI.text.small - 1).text_color(err ? "#D64545" : "#5b6472") // #4: the reset time was 10 px light grey
-        .child(err ? String(err) : (age ? `${age}の値（古い）` : u?.session?.resets_at && !stale(u.session) ? `リセット ${clock(u.session.resets_at)}` : "")));
+      .child(div().truncate().text_size(UI.text.small - 1).text_color(err ? paint("#D64545") : paint("#5b6472")) // #4: the reset time was 10 px light grey
+        .child(err ? String(err) : (age ? `Value from ${age} (stale)` : u?.session?.resets_at && !stale(u.session) ? `Resets ${clock(u.session.resets_at)}` : "")));
   }
 
   // ★105 footer (one line, 40px): left = people / spaces / last refresh, right = the legend (the four states; moved here from the left list's bottom box).
@@ -412,13 +423,13 @@ class AgentHud extends View {
     const fact = (ic, num, unit) => h_flex().flex_none().gap(6).items_center().child(icon(ic, 18, P.muted))
       .child(div().text_size(UI.text.strong).font_weight(700).text_color(P.ink).child(String(num))) /* 2nd-105 N5: 18px bold fixed (800 may not render; the unit stays 14) */.child(div().text_size(UI.text.small).text_color(P.ink).child(unit));
     return h_flex().id("hud-footer").size_full().px(18).gap(22).items_center().bg(P.paper).border_t(1).border_color(P.line).text_color(P.ink)
-      .child(fact("chat", n, "エージェント")).child(fact("folder", spN, "スペース"))
-      .child(h_flex().flex_none().gap(6).items_center().child(icon("refresh", 16, P.muted)).child(div().text_size(UI.text.small).text_color(P.muted).child(`最終更新 ${fresh}`)))
+      .child(fact("chat", n, n === 1 ? "Agent" : "Agents")).child(fact("folder", spN, spN === 1 ? "Space" : "Spaces"))
+      .child(h_flex().flex_none().gap(6).items_center().child(icon("refresh", 16, P.muted)).child(div().text_size(UI.text.small).text_color(P.muted).child(`Updated ${fresh}`)))
       .child(this.feedButton())
       .child(div().flex_1())
-      .child(div().flex_none().text_size(UI.text.small).font_weight(700).text_color(P.muted).child("凡例："))
-      .child(h_flex().id("fl-crown").flex_none().gap(6).items_center().child(icon("crown", 16, "#e0a90f")).child(div().text_size(UI.text.small).text_color(P.ink).child("王冠＝リーダー"))) // ★106-4 (asked by office-left106)
-      .children(STATES.map((st) => h_flex().id(`fl-${st.key}`).flex_none().gap(6).items_center().child(this.stateMark(st, 16)).child(div().text_size(UI.text.small).text_color(P.ink).child(st.key === "blocked" ? "承認待ち（要確認）" : st.label))));
+      .child(div().flex_none().text_size(UI.text.small).font_weight(700).text_color(P.muted).child("Legend:"))
+      .child(h_flex().id("fl-crown").flex_none().gap(6).items_center().child(icon("crown", 16, "#e0a90f")).child(div().text_size(UI.text.small).text_color(P.ink).child("Crown = leader"))) // ★106-4 (asked by office-left106)
+      .children(STATES.map((st) => h_flex().id(`fl-${st.key}`).flex_none().gap(6).items_center().child(this.stateMark(st, 16)).child(div().text_size(UI.text.small).text_color(P.ink).child(st.key === "blocked" ? "Blocked (needs you)" : st.label))));
   }
 
   // W: the click and the review command (room.js `usage`) open the same popup.
@@ -431,7 +442,7 @@ class AgentHud extends View {
   usageButton(t) {
     const s = this.feed.state;
     const btn = h_flex().id("usage-more").flex_none().w(UI.iconBtn).h(UI.iconBtn).gap(2).items_end().justify_center().py(8).rounded(8)
-      .border(1).border_color(P.line).bg("#ffffff").cursor_pointer().hover((el) => el.bg("#f0ede4"))
+      .border(1).border_color(P.line).bg(paint("#ffffff")).cursor_pointer().hover((el) => el.bg(paint("#f0ede4")))
       .on_mouse_down("left", (e) => { const b = e?.bounds, p = e?.position; this.ub = b ? { x: b.x + b.width - 340, y: b.y + b.height + 6 } : p ? { x: p.x - 300, y: p.y + 24 } : null; }) // 5th X4: the popup opens under the button
       .on_click(() => this.openUsage()) // ★106-5 (feed.js): reads OpenCode's record, then opens
       .children([8, 14, 10].map((h) => div().w(4).h(h).rounded(1).bg(P.muted)));
@@ -440,14 +451,14 @@ class AgentHud extends View {
 
   // Popup body (role "usage"): numbers come in through props, taken when the icon was pressed.
   usageView() {
-    const t = theme(), p = props();
+    const t = uiTheme(), p = props();
     const old = (w) => w?.resets_at != null && Number(w.resets_at) < Date.now(); // past its reset time: shown as a dash
-    const color = (pct) => pct == null ? t.muted : pct < 60 ? "#39a380" : pct < 85 ? "#d79032" : "#d6455d";
+    const color = (pct) => pct == null ? t.muted : pct < 60 ? paint("#39a380") : pct < 85 ? "#d79032" : paint("#d6455d");
     const window_ = (label, pct0, resets0) => { const pct = resets0 != null && Number(resets0) < Date.now() ? null : pct0, resets = pct == null ? null : resets0; return v_flex().gap(3)
       .child(h_flex().items_center().justify_between().text_size(UI.text.small)
         .child(div().text_color(t.foreground).child(label))
         .child(h_flex().gap(8).items_center()
-          .child(div().text_size(UI.text.small).text_color(t.muted).child(resets ? `リセット ${clock(resets)}` : ""))
+          .child(div().text_size(UI.text.small).text_color(t.muted).child(resets ? `Resets ${clock(resets)}` : ""))
           .child(div().font_weight(700).text_color(color(pct)).child(pct == null ? "—" : `${pct}%`))))
       .child(div().w_full().h(5).rounded(3).bg(t.border)
         .child(div().h_full().w(Math.max(0, Math.min(100, pct ?? 0)) * 2.8).rounded(3).bg(color(pct)))); };
@@ -455,28 +466,28 @@ class AgentHud extends View {
       .child(h_flex().gap(6).items_center().child(platformIcon({ app: icon }, 14))
         .child(div().text_size(UI.text.small).font_weight(700).text_color(t.foreground).child(title)))
       .children(rows);
-    const win = (w) => w.minutes === 300 ? "5時間" : w.minutes === 10080 ? "週" : `${w.minutes ?? "?"}分`;
+    const win = (w) => w.minutes === 300 ? "5 hours" : w.minutes === 10080 ? "Weekly" : `${w.minutes ?? "?"} min`;
     const groups = [], u = usageParts(p.claude, p.codex, Date.now(), p.demo);
     if (u.claude)
-      groups.push(group("Claude Code", "claude-code", [window_("現在のセッション", u.claude.session.percent, u.claude.session.resets_at),
-        ...u.claude.weekly.map((w) => window_(`週 ${w.label}`, w.percent, w.resets_at)),
+      groups.push(group("Claude Code", "claude-code", [window_("Current session", u.claude.session.percent, u.claude.session.resets_at),
+        ...u.claude.weekly.map((w) => window_(`Weekly (${w.label})`, w.percent, w.resets_at)),
         ...(u.claude.extra ? [div().text_size(UI.text.small).text_color(t.muted).child(u.claude.extra)] : [])]));
     if (u.codex)
       groups.push(group("Codex", "codex", [...u.codex.rows.map((w) => window_(win(w), w.percent, w.resets_at)),
         ...(u.codex.age ? [div().text_size(UI.text.small).text_color(t.muted).child(u.codex.age)] : [])]));
     // ★106-5 every service has its own group; what cannot be read says "未取得" (no made-up number)
-    const none = (title, ic, why) => group(title, ic, [div().text_size(UI.text.small).text_color(t.muted).child(`未取得（${why}）`)]);
-    if (!u.claude) groups.push(none("Claude Code", "claude-code", "いまの値がありません"));
-    if (!u.codex) groups.push(none("Codex", "codex", "記録がありません"));
+    const none = (title, ic, why) => group(title, ic, [div().text_size(UI.text.small).text_color(t.muted).child(`Not available (${why})`)]);
+    if (!u.claude) groups.push(none("Claude Code", "claude-code", "no current value"));
+    if (!u.codex) groups.push(none("Codex", "codex", "no record"));
     const oc = p.opencode;
     groups.push(oc ? group("OpenCode", "opencode", [
-      div().text_size(UI.text.small).text_color(t.foreground).child(`直近5時間 ${fmtTokens(oc.h5.tokens)} トークン・${oc.h5.answers}回`),
-      div().text_size(UI.text.small).text_color(t.foreground).child(`直近24時間 ${fmtTokens(oc.h24.tokens)} トークン・${oc.h24.answers}回`),
-      div().text_size(UI.text.small).text_color(t.muted).child("上限は未取得（OpenCode は枠の値を持たない。キャッシュは数えない）")])
-      : none("OpenCode", "opencode", p.demo ? "デモ中" : "記録を読めません"));
+      div().text_size(UI.text.small).text_color(t.foreground).child(`Last 5 hours: ${fmtTokens(oc.h5.tokens)} tokens · ${oc.h5.answers} replies`),
+      div().text_size(UI.text.small).text_color(t.foreground).child(`Last 24 hours: ${fmtTokens(oc.h24.tokens)} tokens · ${oc.h24.answers} replies`),
+      div().text_size(UI.text.small).text_color(t.muted).child("Limit not available (OpenCode has no quota values; cache is not counted)")])
+      : none("OpenCode", "opencode", p.demo ? "demo" : "cannot read the record"));
     return v_flex().size_full().p(14).gap(14).bg(t.chrome).text_color(t.foreground)
       .children(groups)
-      .when(!!p.demo, (el) => el.child(div().text_size(UI.text.small).font_weight(700).text_color(STATE.blocked.color).child("デモの値です（本物ではありません）")));
+      .when(!!p.demo, (el) => el.child(div().text_size(UI.text.small).font_weight(700).text_color(STATE.blocked.color).child("Demo values (not real)")));
   }
 
   windowButtons(t) {
@@ -509,8 +520,8 @@ class AgentHud extends View {
     }));
     root.child(cols);
     return root.child(h_flex().absolute().left(0).bottom(0).w_full().h(30).px(18).gap(12).items_center().bg("#1F2A37e6")
-      .text_size(11).text_color("#ffffff").child(dot(STATE.done.color, 8)).child(div().child(this.demo() ? "デモ表示" : "ローカル接続済み"))
-      .child(div().text_color(STATE.idle.color).child("｜")).child(div().child(`${list.length} セッション`)));
+      .text_size(11).text_color("#ffffff").child(dot(STATE.done.color, 8)).child(div().child(this.demo() ? "Demo view" : "Connected locally"))
+      .child(div().text_color(STATE.idle.color).child("|")).child(div().child(`${list.length} session${list.length === 1 ? "" : "s"}`)));
   }
 
   card(a, st, list = []) {
@@ -519,10 +530,10 @@ class AgentHud extends View {
     const kidsN = list.filter((x) => x.parent_id === a.id).length;
     const tail = a.cwd ? String(a.cwd).split(/[\\/]/).filter(Boolean).pop() : null;
     const where = [ROOM[a.source]?.title ?? a.source, [a.space, a.tab].filter(Boolean).join(" / ") || tail].filter(Boolean).join(" · ");
-    const act = a.status === "blocked" ? "確認する" : a.status === "done" ? "報告を見る" : null;
+    const act = a.status === "blocked" ? "Review" : a.status === "done" ? "View report" : null;
     const line = a.status === "blocked" ? blockedText(a) : (a.name || a.title || a.address);
     const hot = shared("hakoniwa.cleanup") === true && cleanupIds(this.feed.state).includes(a.id);
-    return v_flex().id(`card-${a.id}`).w_full().flex_none().p(10).gap(8).rounded(12).bg(hot ? "#FFF4F2" : "#ffffff").border(hot ? 2 : 1).border_color(hot ? "#D64545" : P.line)
+    return v_flex().id(`card-${a.id}`).w_full().flex_none().p(10).gap(8).rounded(12).bg(hot ? paint("#FFF4F2") : paint("#ffffff")).border(hot ? 2 : 1).border_color(hot ? paint("#D64545") : P.line)
       .cursor_pointer().hover((s) => s.border_color(st.color)).on_click(() => this.openChat(a))
       .when(!!a.long_idle, (el) => el.opacity(0.7))
       .child(h_flex().gap(10).items_start()
@@ -530,15 +541,15 @@ class AgentHud extends View {
         .child(v_flex().flex_1().min_w(0).gap(4)
           .child(h_flex().gap(6).items_center().child(platformIcon(a, 16))
             .child(div().flex_1().min_w(0).truncate().text_size(14).font_weight(700).text_color(P.ink).child(platform(a).name))
-            .child(h_flex().flex_none().gap(4).items_center().px(6).py(2).rounded(7).bg("#f0ede4").text_size(10).text_color(P.ink)
-              .child(chip(a.color ?? P.muted, 7)).child(div().child(a.model_label ?? "モデル不明"))))
+            .child(h_flex().flex_none().gap(4).items_center().px(6).py(2).rounded(7).bg(paint("#f0ede4")).text_size(10).text_color(P.ink)
+              .child(chip(a.color ?? P.muted, 7)).child(div().child(a.model_label ?? "Unknown model"))))
           .child(div().text_size(12).font_weight(600).text_color(P.ink).child(line))
           .child(div().text_size(10).text_color(P.muted).child(where))
           .when(!!par || kidsN > 0, (el) => el.child(h_flex().gap(4).items_center().flex_none().px(6).py(2).rounded(7).bg(STATE.working.wash)
-            .text_size(10).text_color(P.blue).child(div().truncate().child(par ? `リーダー: ${par.name || par.address}` : `ワーカー ${kidsN}人`))))))
+            .text_size(10).text_color(P.blue).child(div().truncate().child(par ? `Leader: ${par.name || par.address}` : `${kidsN} worker${kidsN === 1 ? "" : "s"}`))))))
       .child(h_flex().gap(8).items_center()
         .child(this.stateMark(st, 16))
-        .child(div().flex_1().min_w(0).truncate().text_size(12).font_weight(700).text_color(st.color).child(`${hasMem(a) ? `メモリ ${fmtMem(a.mem_bytes)}・` : ""}${st.label}${a.unknown ? "?" : ""} ${ago(a.since)}`))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).font_weight(700).text_color(st.color).child(`${hasMem(a) ? `Memory ${fmtMem(a.mem_bytes)} · ` : ""}${st.label}${a.unknown ? "?" : ""} ${ago(a.since)}`))
         .when(!!act, (el) => el.child(div().flex_none().px(10).py(4).rounded(8).bg(P.blue).text_size(11).font_weight(700).text_color("#ffffff").child(act))));
   }
 
@@ -549,7 +560,7 @@ class AgentHud extends View {
     const st = STATE[p?.status];
     const icon = p?.program?.icon ? (p.program.tint ? svg(p.program.icon).text_color(P.ink) : image(p.program.icon)).size(14).flex_none()
       : div().size(14).rounded(4).bg("#7465db");
-    return h_flex().size_full().px(12).items_center().gap(7).bg("#fafbfc").border_b(1).border_color(P.line)
+    return h_flex().size_full().px(12).items_center().gap(7).bg(paint("#fafbfc")).border_b(1).border_color(P.line)
       .child(icon).child(div().text_size(11).text_color(P.ink).child(p?.program?.name ?? "Terminal"))
       .child(div().flex_1()).when(!!st, (el) => el.child(div().text_size(10).text_color(st.color).child(st.label)))
       .child(dot(st?.color ?? P.muted, 6));

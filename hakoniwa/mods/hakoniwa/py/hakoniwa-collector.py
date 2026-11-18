@@ -251,7 +251,7 @@ def wrapper_info(*argvs):
 def resolve_model(transcript_model, argvs, cwd, app=None):
     """(model, is_default): only a model that was really chosen — the conversation record, --model / -m in the argv,
     or the launcher script that started it. ★101-1: a CLI's own default is a guess, so it is not used (the office shows
-    "モデル不明" instead). `is_default` stays false (kept for older state files)."""
+    "Unknown model" instead). `is_default` stays false (kept for older state files)."""
     model = transcript_model
     for argv in argvs:
         model = model or model_from_argv(argv)
@@ -327,12 +327,25 @@ class HcPipe:
     """
 
     def __init__(self):
+        self.next_id = 0
+        self.sock = None
+        if os.name != 'nt':
+            # Linux / macOS: herdr-core listens on a Unix socket under the runtime dir.
+            import socket
+            runtime = os.environ.get('XDG_RUNTIME_DIR') or f'/run/user/{os.getuid()}'
+            path = os.path.join(runtime, 'herdr-core', 'default.sock')
+            if not os.path.exists(path):
+                raise RuntimeError('herdr-core is not running')
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.settimeout(5)
+            self.sock.connect(path)
+            self.file = self.sock.makefile('rwb')
+            return
         pipes = [n for n in os.listdir('\\\\.\\pipe\\')
                  if n.startswith('herdr-core-') and n.endswith('-default.sock')]
         if not pipes:
-            raise RuntimeError('herdr-core が動いていません')
+            raise RuntimeError('herdr-core is not running')
         self.file = open('\\\\.\\pipe\\' + pipes[0], 'r+b')
-        self.next_id = 0
 
     def call(self, method, **params):
         self.next_id += 1
@@ -346,6 +359,8 @@ class HcPipe:
 
     def close(self):
         self.file.close()
+        if self.sock is not None:
+            self.sock.close()
 
 
 def collect_core(table, sessions, transcripts, errors):
@@ -393,7 +408,7 @@ def collect_tui(table, sessions, transcripts, cache, errors):
     agents = []
     herdr = herdr_cli()
     if not herdr:
-        errors['tui'] = 'herdr が見つかりません'
+        errors['tui'] = 'herdr not found'
         return agents
     try:
         # One call for agents, workspaces and tabs (each herdr start costs ~0.3 s).
@@ -445,7 +460,7 @@ T3_PROVIDERS = {'claudeAgent': 'claude-code', 'opencode': 'opencode', 'codex': '
 def collect_t3(errors):
     agents = []
     if not T3_DB.is_file():
-        errors['t3'] = 'T3 Code のデータベースがありません'
+        errors['t3'] = 'T3 Code database not found'
         return agents
     try:
         con = sqlite3.connect(f'file:{T3_DB.as_posix()}?mode=ro', uri=True, timeout=2)
@@ -502,7 +517,7 @@ def collect_t3(errors):
                 'session_id': None, 'pid': None, 'labels': {}, 'parent': None, 'helpers': helpers,
             })
     except sqlite3.Error as exc:
-        errors['t3'] = f'T3 の読み取りに失敗: {exc}'
+        errors['t3'] = f'Failed to read T3: {exc}'
     finally:
         con.close()
     return agents
@@ -513,7 +528,7 @@ def collect_usage(cache, errors):
     try:
         mtime = CLAUDE_JSON.stat().st_mtime
     except OSError:
-        errors['usage'] = '~/.claude.json がありません'
+        errors['usage'] = '~/.claude.json not found'
         return None
     saved = cache.get('usage')
     if saved and saved.get('mtime') == mtime:
@@ -521,7 +536,7 @@ def collect_usage(cache, errors):
     try:
         cached = json.loads(CLAUDE_JSON.read_text(encoding='utf-8')).get('cachedUsageUtilization') or {}
     except (OSError, ValueError) as exc:
-        errors['usage'] = f'利用量の読み取りに失敗: {exc.__class__.__name__}'
+        errors['usage'] = f'Failed to read usage: {exc.__class__.__name__}'
         return saved['data'] if saved else None
     util = cached.get('utilization') or {}
     five = util.get('five_hour') or {}
@@ -530,7 +545,7 @@ def collect_usage(cache, errors):
               for l in util.get('limits') or [] if l.get('group') == 'weekly']
     seven = util.get('seven_day') or {}
     if seven.get('utilization') is not None:
-        weekly.insert(0, {'label': '全体', 'percent': seven.get('utilization'),
+        weekly.insert(0, {'label': 'all models', 'percent': seven.get('utilization'),
                           'resets_at': iso_ms(seven.get('resets_at')), 'active': True})
     extra = util.get('extra_usage') or {}
     data = {
@@ -748,9 +763,9 @@ STATES = ('blocked', 'working', 'done', 'idle')
 ORDER = {'blocked': 0, 'done': 1, 'working': 2, 'idle': 3}
 
 
-FREE_TITLE = 'フリーデスク'                                  # ★68-2: the island of the people in no space (office.py: is_free)
+FREE_TITLE = 'Free desk'                                  # ★68-2: the island of the people in no space (office.py: is_free)
 FREE_ISLAND = 'free:' + FREE_TITLE
-FREE_SPACE_NAME = 'フリー'                                    # ★95: the App space the free desk's agents are in (actions.js FREE_NAME)
+FREE_SPACE_NAME = 'Free'                                    # ★95: the App space the free desk's agents are in (actions.js FREE_NAME)
 
 
 def island_of(agent):
@@ -761,7 +776,7 @@ def island_of(agent):
     if source == 'app':
         where = (labels.get('where') if isinstance(labels, dict) else None) or ''
         title = where.split(' / ')[0].strip() or agent.get('space') or ''      # the space's name, as the App's list shows it
-        if title == FREE_SPACE_NAME:                                           # ★95: the real space "フリー" (the launch dialog's "スペースなし（フリー）") is the free desk island
+        if title == FREE_SPACE_NAME:                                           # ★95: the real space "Free" (the launch dialog's "No space (Free)") is the free desk island
             return FREE_ISLAND, FREE_TITLE
         if not title:                                                          # ★68-2: in no space (hc run --bg --no-parent: no where, no herdr.space): the free desk
             return FREE_ISLAND, FREE_TITLE
@@ -1008,7 +1023,7 @@ def finish(agents, cache):
         agent['long_idle'] = agent['status'] == 'idle' and current - agent['since'] >= LONG_IDLE_MS
         vendor, family, label = model_info(agent.get('model'))
         agent.update(vendor=vendor, family=family, model_label=label)
-    assign_colors(agents)  # ★101-1: no "既定: ..." any more (a CLI default is a guess; the office shows モデル不明)
+    assign_colors(agents)  # ★101-1: no "既定: ..." any more (a CLI default is a guess; the office shows "Unknown model")
     ids = {a['id'] for a in agents}
     for stale in [k for k in seen if k not in ids]:
         del seen[stale]
@@ -1091,7 +1106,7 @@ def safe_messages(agents, cache):
 WEATHER_EVERY_MS = 30 * 60 * 1000
 WEATHER_MAX_AGE_MS = 3 * 60 * 60 * 1000
 # a place for each timezone offset (hours from UTC), used when the settings give no lat/lon: no service that finds a place from the IP address
-WEATHER_PLACES = {9: (35.68, 139.69, '東京'), 0: (51.51, -0.13, 'London'), 1: (48.86, 2.35, 'Paris'), -5: (40.71, -74.0, 'New York'),
+WEATHER_PLACES = {9: (35.68, 139.69, 'Tokyo'), 0: (51.51, -0.13, 'London'), 1: (48.86, 2.35, 'Paris'), -5: (40.71, -74.0, 'New York'),
                   -8: (37.77, -122.42, 'San Francisco'), 8: (1.35, 103.82, 'Singapore'), 5.5: (28.61, 77.21, 'Delhi'), 10: (-33.87, 151.21, 'Sydney')}
 
 
@@ -1203,9 +1218,9 @@ STORY_MS = 12000     # demo storyline: one step per 12 s
 
 NAMES_DEMO = ['office-a', 'office-b', 'office-c', 'rev-cursor', 't12', 't13', 'release', 'api-w1', 'api-w2', 'fe-impl', 'fe-rev', 't21', 't22', 'ui-spec', 'qa-run',
               'data-etl', 'data-chk', 'ops-mon', 'ops-fix', 't31', 'doc-w1', 'doc-w2', 'bld-1', 'bld-2']          # ★19-3: terminal / agent names as they are in real use (no personal names)
-TASKS_DEMO = ['ログイン画面: 入力検証', '検索: 候補の表示', 'API: 認証の修正', 'レビュー: PR の差分', 'テスト: 回帰の確認', 'DB: 移行の下調べ', 'ログ: 集計の改善', '通知: 文言の確認',
-              '設定画面: 保存の不具合', 'ビルド: 警告の解消', '画面: 余白の調整', '帳票: 出力の確認', 'CI: 実行時間の短縮', 'ドキュメントの更新', '監視: 閾値の見直し', 'データ: 欠損の調査']   # the task each one is working on (short)
-ROLES_DEMO = ['web-app', 'アプリ開発', 'cli-tool', 'api-gateway', 'ログイン画面', '検索ページ', 'data-pipeline', '運用改善']                  # ★19-3: spaces / projects as in real use (★108: made-up names)
+TASKS_DEMO = ['Login: input validation', 'Search: suggestions', 'API: auth fix', 'Review: PR diff', 'Tests: regression check', 'DB: migration research', 'Logs: better aggregation', 'Notifications: wording',
+              'Settings: save bug', 'Build: fix warnings', 'UI: spacing tweaks', 'Reports: output check', 'CI: faster runs', 'Update docs', 'Monitoring: thresholds', 'Data: missing values']   # the task each one is working on (short)
+ROLES_DEMO = ['web-app', 'app-dev', 'cli-tool', 'api-gateway', 'login-page', 'search-page', 'data-pipeline', 'ops-improve']                  # ★19-3: spaces / projects as in real use (★108: made-up names)
 
 
 def demo_state(size=0, spaces=8, step=0, weather='clear'):
@@ -1216,26 +1231,26 @@ def demo_state(size=0, spaces=8, step=0, weather='clear'):
     current = now_ms()
     # (key, source, name, app, status, minutes in this state, model, parent key, extra)
     cast = [
-        ('release', 't3', 'リリース: 全体の進行管理', 'claude-code', 'working', 42, 'claude-opus-5-5', None, {'helpers': 2}),
-        ('office-a', 'app', 'ログイン画面: 全体の進行', 'claude-code', 'working', 38, 'claude-opus-5-5', None, {}),
-        ('office-b', 'app', 'ログイン画面: フォーム実装', 'claude-code', 'working', 12, 'claude-sonnet-5-5', 'office-a', {}),
-        ('rev-cursor', 'app', 'ログイン画面: 入力検証', 'copilot', 'blocked', 6, 'claude-haiku-5-5', 'office-a',
-         {'blocked_kind': 'permission', 'blocked_msg': 'npm test を実行してよいか'}),
-        ('office-c', 'app', 'ログイン画面: 文言の確認', 'opencode', 'done', 2, 'deepseek-v4.1-flash', 'office-a', {}),
-        ('t12', 'app', 'ログイン画面: ボタンの色', 'opencode', 'working', 4, 'deepseek-v4.1-flash', 'office-b', {}),
-        ('t13', 'app', 'ログイン画面: 余白の調整', 'claude-code', 'idle', 75, 'claude-haiku-5-5', 'office-b', {}),
-        ('api-w1', 'app', '検索: 全体の進行', 'claude-code', 'working', 25, 'claude-opus-5-5', None, {}),
-        ('api-w2', 'app', '検索: 候補の表示', 'codex', 'idle', 95, 'gpt-5.5', 'api-w1', {}),
-        ('rev-agy', 'app', '検索: 対象ブラウザの調査', 'antigravity', 'blocked', 15, 'gemini-3.8-flash', 'api-w1',
-         {'blocked_kind': 'question', 'blocked_msg': '対象のブラウザはどれか'}),
+        ('release', 't3', 'Release: overall progress', 'claude-code', 'working', 42, 'claude-opus-5-5', None, {'helpers': 2}),
+        ('office-a', 'app', 'Login: overall progress', 'claude-code', 'working', 38, 'claude-opus-5-5', None, {}),
+        ('office-b', 'app', 'Login: form implementation', 'claude-code', 'working', 12, 'claude-sonnet-5-5', 'office-a', {}),
+        ('rev-cursor', 'app', 'Login: input validation', 'copilot', 'blocked', 6, 'claude-haiku-5-5', 'office-a',
+         {'blocked_kind': 'permission', 'blocked_msg': 'OK to run npm test?'}),
+        ('office-c', 'app', 'Login: wording check', 'opencode', 'done', 2, 'deepseek-v4.1-flash', 'office-a', {}),
+        ('t12', 'app', 'Login: button colors', 'opencode', 'working', 4, 'deepseek-v4.1-flash', 'office-b', {}),
+        ('t13', 'app', 'Login: spacing tweaks', 'claude-code', 'idle', 75, 'claude-haiku-5-5', 'office-b', {}),
+        ('api-w1', 'app', 'Search: overall progress', 'claude-code', 'working', 25, 'claude-opus-5-5', None, {}),
+        ('api-w2', 'app', 'Search: suggestions', 'codex', 'idle', 95, 'gpt-5.5', 'api-w1', {}),
+        ('rev-agy', 'app', 'Search: target browser research', 'antigravity', 'blocked', 15, 'gemini-3.8-flash', 'api-w1',
+         {'blocked_kind': 'question', 'blocked_msg': 'Which browsers are targeted?'}),
         ('core-impl', 'tui', 'core-impl', 'claude-code', 'working', 20, 'claude-sonnet-5-5', None, {}),
         ('core-plan', 'tui', 'core-plan', 'opencode', 'done', 3, 'deepseek-v4.1-flash', None, {}),
         ('core-impl-r2', 'tui', 'core-impl-r2', 'claude-code', 'idle', 130, 'claude-sonnet-5-5', None, {}),
         ('docs-rev', 'tui', 'docs-rev', 'codex', 'working', 11, 'gpt-5.5', None, {}),
     ]
     # the spaces the cast works in (the island of each): Herdr App spaces, herdr TUI workspaces, a T3 Code project (★19-3: names as in real use)
-    space_of = {'release': 'cli-tool', 'office-a': 'アプリ開発', 'office-b': 'アプリ開発', 'rev-cursor': 'アプリ開発', 'office-c': 'アプリ開発', 't12': 'アプリ開発',
-                't13': 'アプリ開発', 'api-w1': 'web-app', 'api-w2': 'web-app', 'rev-agy': 'web-app', 'story': 'web-app',
+    space_of = {'release': 'cli-tool', 'office-a': 'app-dev', 'office-b': 'app-dev', 'rev-cursor': 'app-dev', 'office-c': 'app-dev', 't12': 'app-dev',
+                't13': 'app-dev', 'api-w1': 'web-app', 'api-w2': 'web-app', 'rev-agy': 'web-app', 'story': 'web-app',
                 'core-impl': 'cli-tool', 'core-plan': 'cli-tool', 'core-impl-r2': 'cli-tool', 'docs-rev': 'web-app'}
     if size:                                       # a big cast: `size` agents over `spaces` spaces (leader first, the rest its children)
         cast, space_of = [], {}
@@ -1262,25 +1277,25 @@ def demo_state(size=0, spaces=8, step=0, weather='clear'):
             parent = None if first else f'{source}:{lead_key[sp]}'
             cast.append((key, source, key if source == 'tui' else TASKS_DEMO[n % len(TASKS_DEMO)], ('claude-code', 'codex', 'cursor', 'opencode')[n % 4], statuses[n % len(statuses)],
                          5 + n * 3, ('claude-sonnet-5-5', 'gpt-5.5', 'claude-haiku-5-5')[n % 3], parent,
-                         {'blocked_kind': 'permission', 'blocked_msg': 'この操作を実行してよいか'} if statuses[n % len(statuses)] == 'blocked' else {}))
+                         {'blocked_kind': 'permission', 'blocked_msg': 'OK to run this action?'} if statuses[n % len(statuses)] == 'blocked' else {}))
             space_of[key] = ROLES_DEMO[sp % len(ROLES_DEMO)] + (str(sp // len(ROLES_DEMO) + 1) if sp >= len(ROLES_DEMO) else '')
     elif step:
         cast = cast[:step]
     # Storyline: one more agent whose state follows the clock (every STORY_MS), so a demo shows the whole life:
     # comes in -> works at its desk -> waits for approval in the line -> approved, back to the desk -> reports at the counter
     # -> dozes in the lounge (long wait) -> leaves. Each phase is STORY_MS long; "absent" = not in the list.
-    story = [('working', 0, {}), ('blocked', 0, {'blocked_kind': 'permission', 'blocked_msg': 'ファイルを書き込んでよいか'}),
+    story = [('working', 0, {}), ('blocked', 0, {'blocked_kind': 'permission', 'blocked_msg': 'OK to write the file?'}),
              ('working', 0, {}), ('done', 0, {}), ('idle', 70, {}), ('idle', 90, {}), ('idle', 100, {})]
     phase_n = (current // STORY_MS) % len(story)
     st_status, st_idle_min, st_extra = story[phase_n]
     if st_status and not size and not step:
         into = current - (current // STORY_MS) * STORY_MS
-        cast.append(('story', 'app', 'ビルド: 筋書きの見本', 'claude-code', st_status, ((st_idle_min or 0) * MIN + into) / MIN, 'claude-sonnet-5-5', None, st_extra))
+        cast.append(('story', 'app', 'Build: storyline sample', 'claude-code', st_status, ((st_idle_min or 0) * MIN + into) / MIN, 'claude-sonnet-5-5', None, st_extra))
     agents = []
     for key, source, name, app, status, minutes, model, parent, extra in cast:
         agents.append({
             'id': f'{source}:{key}', 'source': source, 'address': key, 'name': name, 'title': name,
-            'space': space_of.get(key, 'デモ'), 'project': space_of.get(key) if source == 't3' else None, 'tab': '', 'cwd': None,
+            'space': space_of.get(key, 'demo'), 'project': space_of.get(key) if source == 't3' else None, 'tab': '', 'cwd': None,
             'app': app, 'status': status, 'blocked_kind': extra.get('blocked_kind'),
             'blocked_msg': extra.get('blocked_msg'), 'since': int(current - minutes * MIN), 'model': model,
             'session_id': None, 'pid': None, 'labels': {}, 'parent': parent, 'helpers': extra.get('helpers', 0),
@@ -1305,13 +1320,13 @@ def demo_state(size=0, spaces=8, step=0, weather='clear'):
         'claude_sessions': {'cli': 4, 'sdk': 1, 'total': 5},
         'usage': {'fetched_at': current,
                   'session': {'percent': 42, 'resets_at': current + 95 * MIN},
-                  'weekly': [{'label': '全体', 'percent': 31, 'resets_at': current + 3 * 24 * 60 * MIN, 'active': True}],
+                  'weekly': [{'label': 'all models', 'percent': 31, 'resets_at': current + 3 * 24 * 60 * MIN, 'active': True}],
                   'extra': None},
         'errors': {},
-        'left': [{'id': 'demo:gone', 'name': 'ひろ', 'island': agents[0].get('island'), 'status': 'idle', 'at': current - 20 * 1000}] if agents else [],
+        'left': [{'id': 'demo:gone', 'name': 'Hiro', 'island': agents[0].get('island'), 'status': 'idle', 'at': current - 20 * 1000}] if agents else [],
         'messages': demo_messages(agents, current),
         'weather': {'kind': weather, 'code': {'clear': 0, 'partly': 2, 'cloudy': 3, 'fog': 45, 'rain': 61, 'snow': 71, 'thunder': 95}.get(weather, 0), 'temp': 18.4,
-                    'is_day': True, 'sunrise': None, 'sunset': None, 'label': '東京', 'at': current},
+                    'is_day': True, 'sunrise': None, 'sunset': None, 'label': 'Tokyo', 'at': current},
         'codex_usage': {'fetched_at': current, 'session': {'percent': 13, 'minutes': 300, 'resets_at': current + 140 * MIN},
                         'weekly': {'percent': 58, 'minutes': 10080, 'resets_at': current + 4 * 24 * 60 * MIN}},
     }
@@ -1394,7 +1409,7 @@ def conversation(agent_id, limit, state_path):
     state = json.loads(state_path.read_text(encoding='utf-8'))
     agent = next((a for a in state.get('agents', []) if a['id'] == agent_id), None)
     if not agent:
-        return {'id': agent_id, 'error': '見つかりません（終了したか、まだ集約されていません）', 'messages': []}
+        return {'id': agent_id, 'error': 'Not found (it has ended, or has not been collected yet)', 'messages': []}
     result = {'id': agent_id, 'name': agent.get('name'), 'source': agent['source'], 'kind': 'messages',
               'messages': []}
     try:
@@ -1415,19 +1430,19 @@ def prompt_tui(agent_id, text, state_path, runner=None):
     """★74-3: send an instruction to a herdr TUI agent (`herdr agent prompt <pane> <text>`). Only source 'tui' (the App's terminals are
     driven by the App itself); a blocked agent is rejected by herdr itself (agent_blocked), never answered here. Returns a dict."""
     if not str(text or '').strip():
-        return {'id': agent_id, 'ok': False, 'error': '指示が空です'}
+        return {'id': agent_id, 'ok': False, 'error': 'The instruction is empty'}
     try:
         state = json.loads(state_path.read_text(encoding='utf-8'))
     except (OSError, ValueError):
-        return {'id': agent_id, 'ok': False, 'error': 'state.json を読めません'}
+        return {'id': agent_id, 'ok': False, 'error': 'Cannot read state.json'}
     agent = next((a for a in state.get('agents', []) if a['id'] == agent_id), None)
     if not agent:
-        return {'id': agent_id, 'ok': False, 'error': '見つかりません（終了したか、まだ集約されていません）'}
+        return {'id': agent_id, 'ok': False, 'error': 'Not found (it has ended, or has not been collected yet)'}
     if agent.get('source') != 'tui':
-        return {'id': agent_id, 'ok': False, 'error': 'herdr TUI のエージェントだけに送れます'}
+        return {'id': agent_id, 'ok': False, 'error': 'Only herdr TUI agents can be sent to'}
     herdr = herdr_cli()
     if not herdr:
-        return {'id': agent_id, 'ok': False, 'error': 'herdr が見つかりません'}
+        return {'id': agent_id, 'ok': False, 'error': 'herdr not found'}
     argv = [herdr, 'agent', 'prompt', agent['address'], str(text)]
     try:
         result = (runner or subprocess.run)(argv, capture_output=True, timeout=15, creationflags=NO_WINDOW if os.name == 'nt' else 0)
@@ -1436,7 +1451,7 @@ def prompt_tui(agent_id, text, state_path, runner=None):
     out = (result.stdout or b'').decode('utf-8', 'replace').strip() + ' ' + (result.stderr or b'').decode('utf-8', 'replace').strip()
     if result.returncode:
         blocked = 'agent_blocked' in out
-        return {'id': agent_id, 'ok': False, 'blocked': blocked, 'error': '承認待ちのため送れません（先に承認の画面で答えてください）' if blocked else out.strip()[:300]}
+        return {'id': agent_id, 'ok': False, 'blocked': blocked, 'error': 'Cannot send while it waits for approval (answer the approval screen first)' if blocked else out.strip()[:300]}
     return {'id': agent_id, 'ok': True}
 
 

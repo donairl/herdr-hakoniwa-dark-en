@@ -2,7 +2,7 @@
 // Nothing is guessed: only lines that the dialog itself shows are returned. A screen with no readable dialog gives { readable: false } and the card says where to look instead.
 import { approvalPlan, stripApprovalDialog } from "./approve.js";
 
-export const NO_DETAIL_TEXT = "中身は会話の最後の操作を見てください";
+export const NO_DETAIL_TEXT = "See the last action in the conversation for details";
 const BOX = /[│┃║╭╮╰╯┌┐└┘╔╗╚╝─━═╌┄┈]/g, OPT = /^\s*(?:[❯>›»▶▸→*]\s*)?\d{1,2}[.)]\s+\S/;
 const FOOT = /^(esc\b|enter\b|tab\b|ctrl\b|shift\b|press\b|↑|↓)/i; // key hint lines under the options are not part of the ask
 const clean = (s) => String(s ?? "").replace(BOX, " ").replace(/\s+/g, " ").trim();
@@ -23,19 +23,13 @@ export function approvalSummary(screen) {
   return { readable: true, question: clip(question, 70), what: clip(body.slice(0, 2).join(" · "), 70) };
 }
 
-// 26th S3 (office-fix31b): a Japanese gloss for the dialog's English heading and question, ONLY for forms known exactly. The original English stays (the gloss is added
-// in full-width brackets); any other text is returned as it is (nothing made up).
-const HEAD_JA = { "Create file": "ファイルを作成", "Edit file": "ファイルを編集", "Read file": "ファイルを読む", "Bash command": "コマンドの実行" };
+// 26th S3 (office-fix31b): the Japanese UI added a gloss to the dialog's English heading and question. The English UI shows them as they are
+// (the dialog is already in English); any other text is returned as it is too (nothing made up). inbox.js inboxRawJa reads the known headings itself.
 export function glossWhat(what) {
-  const t = String(what ?? ""), i = t.indexOf(" · "), head = i < 0 ? t : t.slice(0, i), ja = HEAD_JA[head];
-  return ja ? `${head}（${ja}）${i < 0 ? "" : t.slice(i)}` : t;
+  return String(what ?? "");
 }
 export function glossQuestion(q) {
-  const t = String(q ?? ""); let m;
-  if (t === "Do you want to proceed?") return `${t}（実行しますか？）`;
-  if ((m = /^Do you want to create (.+)\?$/.exec(t))) return `${t}（${m[1]} を作成しますか？）`;
-  if ((m = /^Do you want to make this edit to (.+)\?$/.exec(t))) return `${t}（${m[1]} へのこの編集を行いますか？）`;
-  return t;
+  return String(q ?? "");
 }
 
 // The lines the card shows over its description: at most two. Unreadable or empty -> the one fallback line.

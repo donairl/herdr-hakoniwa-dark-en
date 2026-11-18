@@ -13,7 +13,7 @@ const BARE = /^\s{2,}(Searched|Read|Listed|Wrote|Updated|Edited|Created|Fetched|
 // 23rd P4: the line that ends a turn ("✻ Brewed for 5s · done 4:23", "Cooked for 1m 2s").
 const END = /^\s*(?:[✻✳✶✢✽·*]\s*)?[A-Z][a-zé]+ed\s+for\s+(?:\d+h\s*)?(?:\d+m\s*)?\d+s\b/;
 // 23rd P5: the heading life.js puts above a message from the parent: "（親 t19h office-ux22 から）" -> shown "（親から）", the address and name in the tooltip.
-const FROM = /^\s*(?:[❯>]\s*)?（親\s+(.+?)\s+から）\s*$/; // 24th Q1: the screen copy puts the input line's "❯ " in front of it
+const FROM = /^\s*(?:[❯>]\s*)?\(from parent\s+(.+?)\)\s*$/; // 24th Q1: the screen copy puts the input line's "❯ " in front of it
 
 // 25th R5: "t19h office-ux22" -> "office-ux22" (the words after the address); with only an address ("t19h") that address is returned.
 export const fromName = (title) => { const t = String(title ?? "").trim(), m = /^\S+\s+(.+)$/.exec(t); return m ? m[1].trim() : t; };
@@ -110,12 +110,12 @@ export function openApprovalCut(screen) {
 
 // 30th 29-W5: the turn-end line in a known form ("✻ Churned for 3s · done 6:35", "Cooked for 1m 2s") -> "完了（3秒）". Only that form; an unknown line is returned as it is.
 const END_FULL = /^\s*(?:[✻✳✶✢✽·*]\s*)?[A-Z][a-zé]+ed\s+for\s+(?:(\d+)h\s*)?(?:(\d+)m\s*)?(\d+)s(?:\s*[·•]\s*done\s+\d{1,2}:\d{2}(?::\d{2})?)?\s*$/;
-const durText = (h, mi, s) => `${h ? `${h}時間` : ""}${mi ? `${mi}分` : ""}${s || (!h && !mi) ? `${s}秒` : ""}`;
+const durText = (h, mi, s) => [h ? `${h}h` : "", mi ? `${mi}m` : "", s || (!h && !mi) ? `${s}s` : ""].filter(Boolean).join(" ");
 // 34th 33-A7: `rejected` (the record just before the line is 「却下しました: …」) -> 「却下で終了（3秒）」 instead of 「完了（3秒）」. Only for the known form.
 export function endLabel(line, rejected = false) {
   const t = String(line ?? ""), m = END_FULL.exec(t);
   if (!m) return t;
-  return `${rejected ? "却下で終了" : "完了"}（${durText(Number(m[1] ?? 0), Number(m[2] ?? 0), Number(m[3] ?? 0))}）`;
+  return `${rejected ? "Rejected" : "Done"} (${durText(Number(m[1] ?? 0), Number(m[2] ?? 0), Number(m[3] ?? 0))})`;
 }
 
 // 34th 33-A1 (office-fix39a): while the person works the screen copy ends with Claude Code's spinner line ("✻ Frolicking… (3s · ↓ 339 tokens · thought for 1s)", seen on a real screen) and a Tip line
@@ -130,13 +130,14 @@ export const dropTipLines = (text) => String(text ?? "").split(/\r?\n/).filter((
 export function workLabel(line) {
   const t = String(line ?? ""), m = WORK.exec(t);
   if (!m) return t;
-  return `作業中…（${durText(Number(m[1] ?? 0), Number(m[2] ?? 0), Number(m[3] ?? 0))}）`;
+  return `Working… (${durText(Number(m[1] ?? 0), Number(m[2] ?? 0), Number(m[3] ?? 0))})`;
 }
 
 // 34th 33-A7: the small mark in front of a record: ✓ for 「ファイルを作成」「ファイルを編集」, ✕ for 「却下しました」; null for every other record.
 export function toolMark(text) {
   const l = toolLabel(text);
-  return /^ファイルを(?:作成|編集)/.test(l) ? "ok" : /^却下しました/.test(l) ? "no" : null;
+  if (l === String(text ?? "")) return null; // not one of the labels made here (a raw screen line could start with the same English words)
+  return /^(?:Created|Edited): /.test(l) ? "ok" : /^Rejected: /.test(l) ? "no" : null;
 }
 // 34th 33-A7: the block before the turn-end line (skipping blank text) is a rejected record.
 export function endRejected(blocks, i) {
@@ -158,10 +159,10 @@ const REC_PART = /^(?:(searched) for|(read|listed|ran))\s+(\d+)\s+(patterns?|fil
 function partLabel(p) {
   const m = REC_PART.exec(p.trim()); if (!m) return null;
   const n = Number(m[3]), noun = m[4], verb = (m[1] ?? m[2]).toLowerCase();
-  if (verb === "ran" && /^shell command/i.test(noun)) return `シェルを実行（${n}件）`;
-  if (verb === "searched" && /^pattern/i.test(noun)) return `検索（${n}件）`;
-  if (verb === "read" && /^file/i.test(noun)) return `ファイルを読む（${n}件）`;
-  if (verb === "listed" && /^(path|director)/i.test(noun)) return `一覧を取得（${n}件）`;
+  if (verb === "ran" && /^shell command/i.test(noun)) return `Ran shell (${n})`;
+  if (verb === "searched" && /^pattern/i.test(noun)) return `Searched (${n})`;
+  if (verb === "read" && /^file/i.test(noun)) return `Read files (${n})`;
+  if (verb === "listed" && /^(path|director)/i.test(noun)) return `Listed (${n})`;
   return null;
 }
 // 32nd 31-Y3・31-Y5: a Write record ("● Write(no.txt)" + "⎿  User rejected write to no.txt" / "⎿  Wrote 1 line to bye.txt" + the file's own indented lines) is one line:
@@ -175,7 +176,7 @@ function writeLabel(t) {
   if (!lines.slice(2).every((l) => l.trim() === "" || /^\s{3,}\S/.test(l))) return null;
   const name = m[3].replace(/^["'`]|["'`]$/g, "").split(/[\\/]/).filter(Boolean).pop();
   if (!name) return null;
-  return m[1] ? `ファイルを作成: ${name}` : `却下しました: ${name}`;
+  return m[1] ? `Created: ${name}` : `Rejected: ${name}`;
 }
 // 33rd 32-Z2 (office-fix38b): an Edit record as claude 2.1.319 prints it ("● Update(edit.txt)" + "⎿  Added 1 line, removed 1 line" + the diff lines "      1 -hello world" / "      1 +hello there")
 // is one line: 「ファイルを編集: edit.txt（1行追加・1行削除）」 (the diff is not shown, the original is the tooltip). Only one of the two counts: 「（2行追加）」/「（1行削除）」. The tool name is `Update(…)`
@@ -190,8 +191,8 @@ function editLabel(t) {
   if (!lines.slice(2).every((l) => l.trim() === "" || /^\s{3,}\S/.test(l))) return null;
   const name = c[1].trim().replace(/^["'`]|["'`]$/g, "").split(/[\\/]/).filter(Boolean).pop();
   if (!name) return null;
-  const parts = [m[1] != null ? `${m[1]}行追加` : null, m[2] != null || m[3] != null ? `${m[2] ?? m[3]}行削除` : null].filter(Boolean);
-  return `ファイルを編集: ${name}（${parts.join("・")}）`;
+  const parts = [m[1] != null ? `${m[1]} added` : null, m[2] != null || m[3] != null ? `${m[2] ?? m[3]} removed` : null].filter(Boolean);
+  return `Edited: ${name} (${parts.join(", ")})`;
 }
 // 37th office-fix42b (35-C3): a PowerShell / Bash record as seen in office-ux35's trial terminal ("  Creating empty bye.txt in scratch directory if absent" — the leading "●" blinks, so a screen
 // copy may lack it — and "  ⎿  $ $p = '…'; if (…) { … }" under it, the rest of the command on indented lines) is one line: 「シェルを実行: <description>」 (the command is not shown, the original is
@@ -206,8 +207,8 @@ function shellLabel(t) {
   if (!lines.slice(2).every((l) => l.trim() === "" || /^\s{3,}\S/.test(l))) return null;
   // 39th office-fix44b (37-E6): a trailing 「 · 21s」/「 · 1m 5s」/「 · 1h 2m 3s」 (a known duration form only) -> 「（21秒）」. The description (Claude's English) is kept as it is; with nothing before the duration the line is left as it is.
   const d = SHELL_DUR.exec(m[1]);
-  if (d && d[1].trim() !== "") return `シェルを実行: ${d[1].trim()}（${durText(Number(d[2] ?? 0), Number(d[3] ?? 0), Number(d[4] ?? 0))}）`;
-  return `シェルを実行: ${m[1]}`;
+  if (d && d[1].trim() !== "") return `Shell: ${d[1].trim()} (${durText(Number(d[2] ?? 0), Number(d[3] ?? 0), Number(d[4] ?? 0))})`;
+  return `Shell: ${m[1]}`;
 }
 // the head line of such a record (used by splitToolBlocks with the line after it)
 const isShellHead = (ln, next) => SHELL_RES.test(String(next ?? "")) && shellLabel(`${ln}\n${next}`) != null;
@@ -222,7 +223,7 @@ function rejectLabel(t) {
   const head = toolLabel(lines[0]);
   if (!(head !== lines[0] && !/[\r\n]/.test(head) && /^[^●⏺]/.test(head))) return null;
   // 40th office-fix45a (38-F1): "Interrupted" marks only the LAST command as refused, so 「シェルを実行（2件）」 becomes 「シェルを実行（2件。最後の1件は却下）」; with 1 command it stays as it is.
-  return `却下しました: ${head.replace(/シェルを実行（(\d+)件）/, (all, n) => (Number(n) >= 2 ? `シェルを実行（${n}件。最後の1件は却下）` : all))}`;
+  return `Rejected: ${head.replace(/Ran shell \((\d+)\)/, (all, n) => (Number(n) >= 2 ? `Ran shell (${n}, the last one rejected)` : all))}`;
 }
 export function toolLabel(text) {
   const t = String(text ?? "");
@@ -230,7 +231,7 @@ export function toolLabel(text) {
   const body = t.replace(REC_HEAD, "").replace(REC_HINT, "");
   if (!/^[A-Z]/.test(body)) return t;
   const labels = body.split(/,\s*/).map(partLabel);
-  return labels.length > 0 && labels.every((x) => x != null) ? labels.join("・") : t;
+  return labels.length > 0 && labels.every((x) => x != null) ? labels.join(" · ") : t;
 }
 
 export const isToolHead =(line) => CALL.test(String(line ?? "")) || VERB.test(String(line ?? "")) || BARE.test(String(line ?? ""));
@@ -244,7 +245,7 @@ export function splitToolBlocks(screen) {
   let inTool = false, seenFrom = false;
   for (let li = 0; li < lines.length; li++) {
     const ln = lines[li], fm = FROM.exec(ln);
-    if (fm) { out.push({ kind: "from", text: ln, label: "（親から）", title: fm[1], name: fromName(fm[1]), again: seenFrom }); seenFrom = true; inTool = false; continue; } // 25th R5: `name` = the parent's name shown beside the label (the tooltip keeps address + name) // 24th Q5: `again` = the 2nd and later headings (drawn smaller and paler)
+    if (fm) { out.push({ kind: "from", text: ln, label: "(from parent)", title: fm[1], name: fromName(fm[1]), again: seenFrom }); seenFrom = true; inTool = false; continue; } // 25th R5: `name` = the parent's name shown beside the label (the tooltip keeps address + name) // 24th Q5: `again` = the 2nd and later headings (drawn smaller and paler)
     if (isTurnEnd(ln)) { out.push({ kind: "end", text: ln }); inTool = false; continue; }
     if (isWorkLine(ln)) { out.push({ kind: "work", text: ln }); inTool = false; continue; } // 34th 33-A1: the spinner line
     if (isTipLine(ln)) { inTool = false; continue; } // 34th 33-A1: the Tip line is not shown

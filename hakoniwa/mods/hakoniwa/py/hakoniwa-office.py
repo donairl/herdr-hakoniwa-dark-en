@@ -567,8 +567,8 @@ def dfs_order(members):
     return order
 
 
-FREE_PREFIX = 'free:'                                       # ★68-2: the island of the people in no space (the collector's island 'free:フリーデスク')
-FREE_KEY = FREE_PREFIX + 'フリーデスク'                       # ★72-1: the collector's FREE_ISLAND (its place is kept while nobody is in it)
+FREE_PREFIX = 'free:'                                       # ★68-2: the island of the people in no space (the collector's island 'free:Free desk')
+FREE_KEY = FREE_PREFIX + 'Free desk'                       # ★72-1: the collector's FREE_ISLAND (its place is kept while nobody is in it)
 
 
 def is_free(key):                                          # ★68-2: OFF until the free desk stops moving rooms (1 room / 4 rooms: rooms moved). Then: str(key).startswith(FREE_PREFIX)
@@ -1819,7 +1819,7 @@ def build(agents, state, now, out_dir, cfg=None, view=None, debug=False):
             if all(which in parts[f'{ENT}_{n_}'] for n_ in names if f'{ENT}_{n_}' in parts):
                 out['door'][which] = {n_: canvas_of(*scaled(half_of(parts[f'{ENT}_{n_}'], which), kr)) for n_ in names if f'{ENT}_{n_}' in parts}
     # ★42 (review r22): no reception desk by the entrance any more (a small desk without a label between the entrance and the approval desk)
-    names = {'approval': '承認デスク', 'counter': '提出カウンター', 'lounge': '控室'}
+    names = {'approval': 'Approvals', 'counter': 'Reports', 'lounge': 'Lounge'}
     spots = {}
     heads = {}
     def card_spot(rect_, cw_, extra=(), size=None, step=3):

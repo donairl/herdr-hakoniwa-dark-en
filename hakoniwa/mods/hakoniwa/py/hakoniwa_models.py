@@ -55,7 +55,7 @@ def claude():
         raise RuntimeError('no model alias in claude --help')
     if 'haiku' not in aliases:
         aliases.append('haiku')  # named by the user (2026-11-05); the CLI accepts any alias of its models
-    return {'models': [{'id': a, 'label': f'{a}（最新）'} for a in aliases], 'efforts': efforts_in(h, '--effort')}
+    return {'models': [{'id': a, 'label': f'{a} (latest)'} for a in aliases], 'efforts': efforts_in(h, '--effort')}
 
 
 def codex():

@@ -43,6 +43,6 @@ export async function withDefaults(config, { appHomeDir, homeDir, probe }) {
 }
 
 export const problemText = (problem, python) =>
-  problem === "python" ? "Python 3.10 以上が見つかりません（PATH に入れるか、config.json の python に場所を書く）"
-    : problem === "packages" ? `numpy と Pillow がありません（${String(python ?? "python").replace(/pythonw(\.exe)?$/i, "python$1")} -m pip install numpy pillow）`
+  problem === "python" ? "Python 3.10 or newer not found (add it to PATH, or set its path as python in config.json)"
+    : problem === "packages" ? `numpy and Pillow are missing (${String(python ?? "python").replace(/pythonw(\.exe)?$/i, "python$1")} -m pip install numpy pillow)`
       : null;
