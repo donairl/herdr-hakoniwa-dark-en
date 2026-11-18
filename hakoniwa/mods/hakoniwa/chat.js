@@ -304,7 +304,8 @@ export class ChatPart {
       if (this.termKey === sig0) { this.measuredBox(); return true; }
       try {
         const x0 = full0 ? 0 : col0 ? b0.x + b0.width - W0 : b0.x, y0 = full0 ? 0 : b0.y;
-        this.termId = openOverlay({ kind: "window", key: "hakoniwa-term", width: W0, height: H0, at: { x: x0, y: y0 }, layout: col0 ? { type: "block", content: { mod: "hakoniwa", props: { role: "detail", collapsed: true, name: pick.name ?? pick.address } } } : { type: "column", children: [
+        this.termMoveTo(x0, y0);
+        this.termId = openOverlay({ kind: "window", key: full0 ? "hakoniwa-term-full" : "hakoniwa-term", width: W0, height: H0, at: { x: x0, y: y0 }, layout: col0 ? { type: "block", content: { mod: "hakoniwa", props: { role: "detail", collapsed: true, name: pick.name ?? pick.address } } } : { type: "column", children: [
           { type: "block", size: { px: 52 }, content: { mod: "hakoniwa", props: { role: "pick-head", name: pick.name ?? pick.address } } }, // ★81 a thin head: name, シェル, 折りたたむ, × 閉じる (★103-4: 52px, buttons 32px+)
           { type: "block", content: { terminal: pick.address } }] } });
         this.termKey = sig0; this.termBox = { x: x0, y: y0, w: W0, h: H0, frame: full0 ? 0 : RIGHT_WIN_FRAME }; setShared("hakoniwa.termBox", this.termBox); return true;
@@ -338,7 +339,8 @@ export class ChatPart {
     } else { this.apReopenN = 0; this.reopenN = 0; if (ap) this.traceApprove?.({ ev: "sync-open", id: want.id, ap: 1, apH, status: want.status, since: want.since ?? null }); } // 46th 44-L1: a window first opened for a person who already waits
     try {
       const wx = full ? 0 : colW ? bx.x + bx.width - W : bx.x, wy = full ? 0 : bx.y;
-      this.termId = openOverlay({ kind: "window", key: "hakoniwa-term", width: W, height: H, at: { x: wx, y: wy },
+      this.termMoveTo(wx, wy);
+      this.termId = openOverlay({ kind: "window", key: full ? "hakoniwa-term-full" : "hakoniwa-term", width: W, height: H, at: { x: wx, y: wy },
         layout: colW ? { type: "block", content: { mod: "hakoniwa", props: { role: "detail", collapsed: true, id: want.id, name: want.name, face: this.faceFile(want) ?? null } } } : { type: "column", children: [
           { type: "block", size: { px: topH }, content: { mod: "hakoniwa", props: { role: "detail", paneH: H, paneW: W, tab, id: want.id, name: want.name, color: want.color, face: this.faceFile(want) ?? null } } }, // the head + tabs
           { type: "block", content: tab === "terminal" ? { terminal: want.address } : { mod: "hakoniwa", props: { role: tab === "chat" ? "chat-body" : "tree-body", id: want.id, name: want.name ?? "", source: want.source, ap: ap ? 1 : 0, apH } } }, // 33rd 32-Z1: ap / apH = the approval block is in this window (a copy that has not read the list yet sizes itself by them)
@@ -481,6 +483,13 @@ export class ChatPart {
 
   // The Kanban's "Open terminal": agent.focus only moved the focus to a pane this layout never shows (nothing happened). The chat window is
   // replaced by a window that holds the agent's real terminal under a thin head ("chat-term-head": Chat goes back, Close shuts it). One window at a time (hakoniwa.chatWin).
+  // Opening the keyed window ("hakoniwa-term") again replaces the open one IN ITS PLACE: `at` is not used. Full screen has a key of its own ("hakoniwa-term-full"), and when the
+  // place changes (full screen on / off) the open one is closed first, so the new one opens at `at` (it went full width from the old left edge, past the screen's right side).
+  termMoveTo(x, y) {
+    const at = `${Math.round(x)},${Math.round(y)}`;
+    if (this.termId != null && this.termAt != null && this.termAt !== at) { try { closeOverlay(this.termId); } catch {} this.termId = null; }
+    this.termAt = at;
+  }
   // The full-screen switch of a terminal (icons fullscreen / fullscreen-exit). `fn` replaces the shared switch (the Kanban window opens itself again).
   fullBtn(id, on = termFullOn(shared), fn = null) {
     return iconBtn(id, on ? "fullscreen-exit" : "fullscreen", fn ?? (() => setShared("hakoniwa.termFull", { on: !on, at: Date.now() })),
