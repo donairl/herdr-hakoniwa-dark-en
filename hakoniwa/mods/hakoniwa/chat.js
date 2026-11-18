@@ -286,6 +286,8 @@ export class ChatPart {
     this.termBox = nb; setShared("hakoniwa.termBox", nb);
   }
 
+  // H is in both window keys (sig0 / sig): an overlay window keeps the height it was opened with, so when the App window gets shorter (maximize, resize) the old
+  // height ran past the bottom and cut the terminal's last lines. A new height now opens the window again.
   // The chosen App agent's own terminal, in a window at the right of the Office (an App agent only: `{ terminal: address }` is a herdr-core terminal).
   syncTerm(sel, list, left, cx) {
     const a = sel && list.find((x) => x.id === sel), want = a && this.open && a.source === "app" && a.address && !(shared("hakoniwa.demo") || this.feed.config?.demo) ? a : null;
@@ -298,7 +300,7 @@ export class ChatPart {
     if (pick) { // ★72-3: a terminal picked from the left list (a shell, or an agent's terminal): the real terminal in the same window, no detail part
       const vp0 = vpSize();
       const vw0 = vp0?.width > 0 ? vp0.width : left.width + 268, vh0 = vp0?.height > 0 ? vp0.height : left.height + 60;
-      const col0 = !!this.rightCollapsed, b0 = rightOverlayBox(vw0, vh0, 60, col0 ? RIGHT_COLLAPSED_W : (this.rightW ?? Math.round(left.width * 0.46)), this.rightW ? 0.6 : 0.4, RIGHT_EDGE), W0 = col0 ? RIGHT_COLLAPSED_W : b0.width, H0 = Math.min(b0.height, Math.max(240, Math.round(left.height))), sig0 = `pick|${pick.address}|${pick.name ?? ""}|${W0}|${col0}`; // ★103-3 attached to the right edge; ★103-4 the folded strip
+      const col0 = !!this.rightCollapsed, b0 = rightOverlayBox(vw0, vh0, 60, col0 ? RIGHT_COLLAPSED_W : (this.rightW ?? Math.round(left.width * 0.46)), this.rightW ? 0.6 : 0.4, RIGHT_EDGE), W0 = col0 ? RIGHT_COLLAPSED_W : b0.width, H0 = Math.min(b0.height, Math.max(240, Math.round(left.height))), sig0 = `pick|${pick.address}|${pick.name ?? ""}|${W0}|${H0}|${col0}`; // ★103-3 attached to the right edge; ★103-4 the folded strip
       if (this.termKey === sig0) { this.measuredBox(); return true; }
       try {
         this.termId = openOverlay({ kind: "window", key: "hakoniwa-term", width: W0, height: H0, at: { x: col0 ? b0.x + b0.width - W0 : b0.x, y: b0.y }, layout: col0 ? { type: "block", content: { mod: "hakoniwa", props: { role: "detail", collapsed: true, name: pick.name ?? pick.address } } } : { type: "column", children: [
@@ -316,11 +318,11 @@ export class ChatPart {
     const vw = vp?.width > 0 ? vp.width : left.width + 268, vh = vp?.height > 0 ? vp.height : left.height + 60; // the window's real size (the office's own size + the sidebar only as a fallback)
     const colW = !!this.rightCollapsed, bx = rightOverlayBox(vw, vh, 60, colW ? RIGHT_COLLAPSED_W : (this.rightW ?? Math.round(left.width * 0.46)), this.rightW ? 0.6 : 0.4, RIGHT_EDGE), W = colW ? RIGHT_COLLAPSED_W : bx.width, H = Math.min(bx.height, Math.max(240, Math.round(left.height))); // ★103-3 attached; ★103-4 folded
     if (this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "chat"; } // ★84 another person: the first tab again; ★106 V1: the conversation
-    const kidsN = this.familyRows(want, list).length - 1, tab = tabFor(this.detailTab, true, kidsN), topH = headHeight(W), ap = tab === "chat" && want.status === "blocked", apH = ap ? this.apHold(want.id, W, this.apNeed(want, W)) : (this.apHold(null), 0), sig = `${want.id}|${want.address}|${topH}|${tab}|${W}|${colW}|${ap ? "ap" + apH : ""}`; // 13th D1: ap = a person waiting for approval gets a card block above the input (the window is opened again when it starts / ends) // ★84 the head is a fixed height from the width; the tab is in the key (the window is opened again)
+    const kidsN = this.familyRows(want, list).length - 1, tab = tabFor(this.detailTab, true, kidsN), topH = headHeight(W), ap = tab === "chat" && want.status === "blocked", apH = ap ? this.apHold(want.id, W, this.apNeed(want, W)) : (this.apHold(null), 0), sig = `${want.id}|${want.address}|${topH}|${tab}|${W}|${H}|${colW}|${ap ? "ap" + apH : ""}`; // 13th D1: ap = a person waiting for approval gets a card block above the input (the window is opened again when it starts / ends) // ★84 the head is a fixed height from the width; the tab is in the key (the window is opened again)
     if (this.termKey === sig) { this.measuredBox(); return true; }
     // 34th 33-A4 (office-fix39b): what changed in the key at each re-open is written to right-edge-diag.json ("window-reopen": n, changed, from, to). An apH-only change while the card is
     // already there (the ask text got longer) re-opens at most APH_REOPEN_MAX times per waiting episode (the window vanishes for a frame each time); a shrink never re-opens (apHold keeps the larger).
-    const parts = { id: want.id, address: want.address ?? null, topH, tab, W, colW, ap: ap ? 1 : 0, apH }, prev = this.termParts?.key === this.termKey ? this.termParts : null;
+    const parts = { id: want.id, address: want.address ?? null, topH, tab, W, H, colW, ap: ap ? 1 : 0, apH }, prev = this.termParts?.key === this.termKey ? this.termParts : null;
     if (prev) {
       const changed = Object.keys(parts).filter((k) => parts[k] !== prev[k]);
       if (changed.length === 1 && changed[0] === "apH" && ap && prev.ap === 1) { if ((this.apReopenN ?? 0) >= APH_REOPEN_MAX) { this.measuredBox(); return true; } this.apReopenN = (this.apReopenN ?? 0) + 1; }
