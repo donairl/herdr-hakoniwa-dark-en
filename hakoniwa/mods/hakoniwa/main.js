@@ -36,7 +36,7 @@ class AgentHud extends View {
     this.observed = {};
     this.size = { width: 1200, height: 600 };
     const role = props()?.role ?? "board";
-    if (role === "pane" || role === "usage" || role === "confirm" || role === "move" || role === "pick-head" || role === "state-list" || role === "feed") return;
+    if (role === "pane" || role === "usage" || role === "confirm" || role === "move" || role === "pick-head" || role === "chat-term-head" || role === "state-list" || role === "feed") return;
     if (role === "inbox") { // ★106 ② (detail.js). 13th B4: the inbox window read no collector state, so items() lacked parent_id and a child handed back to its parent still counted as 報告あり (chip 3 vs inbox 4): read the feed like the head does
       this.watchApprovals(cx);
       cx.spawn(async (cx2) => { try { await this.loadConfig(); if (await this.load()) cx2.notify(); } catch {} });
@@ -228,6 +228,7 @@ class AgentHud extends View {
     const role = props()?.role ?? "board";
     if (role === "pane") return this.paneHeader();
     if (role === "chat") return this.chatView();
+    if (role === "chat-term-head") return this.chatTermHeadView(); // the Kanban's "Open terminal" window (chat.js)
     // The right window (key "hakoniwa-term") is docked by `at`; a press the mod doesn't stop would drag it, and Herdr then
     // remembers that spot over `at`, so the window opens half off-screen afterwards. Its blocks stop presses: no drag.
     const pin = (el) => (el && typeof el.on_mouse_down === "function" ? el.on_mouse_down("left", (_e, cx2) => cx2.stop_propagation()) : el);

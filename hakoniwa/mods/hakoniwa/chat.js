@@ -191,7 +191,7 @@ export class ChatPart {
         .child(h_flex().gap(4).items_center().child(chip(p.color ?? P.muted, 8))
           .child(div().text_size(10).text_color(P.muted).child(p.model ?? "Unknown model"))))
       .child(btn("chat-reload", "Reload", (_e, cx) => cx.spawn(async (cx) => this.loadChat(cx))))
-      .when(p.source === "app", (el) => el.child(btn("chat-open", "Open terminal", () => run("agent.focus", { terminal: p.address }))))
+      .when(p.source === "app" && !!p.address, (el) => el.child(btn("chat-open", "Open terminal", () => this.openTermWin(p))))
       .child(btn("chat-close", "Close", () => closeOverlay(p.overlay)));
     let body;
     if (this.chat?.loading && !d) body = div().p(16).text_size(12).text_color(P.muted).child("Loading…");
@@ -472,6 +472,31 @@ export class ChatPart {
     const tab = tabFor(p.tab, true, this.familyRows(a, list).length - 1); // ★84 head + tabs; the body under it is the window's next block
     // ★103-3 (2nd) a press on the head never drags the window (attached). ★105 N6: this comment sat after the call on the same line and swallowed `.children(...)`: the head was empty
     return v_flex().id("detail-root").size_full().overflow_hidden().bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).children(this.detailHead(a, list, slide, { width: p.paneW, tab, hasTerminal: true, face: p.face, onTab: (k) => setShared("hakoniwa.tab", { id: a.id, tab: k, at: Date.now() }) }));
+  }
+
+  // The Kanban's "Open terminal": agent.focus only moved the focus to a pane this layout never shows (nothing happened). The chat window is
+  // replaced by a window that holds the agent's real terminal under a thin head ("chat-term-head": Chat goes back, Close shuts it). One window at a time (hakoniwa.chatWin).
+  openTermWin(p) {
+    const prev = shared("hakoniwa.chatWin");
+    if (prev != null) { try { closeOverlay(prev); } catch {} }
+    const keep = { id: p.id, name: p.name, source: p.source, address: p.address, app: p.app, model: p.model, color: p.color };
+    const id = openOverlay({ kind: "window", width: 760, height: 560, layout: { type: "column", children: [
+      { type: "block", size: { px: 46 }, content: { mod: "hakoniwa", props: { role: "chat-term-head", ...keep } } },
+      { type: "block", content: { terminal: p.address } }] } });
+    setShared("hakoniwa.chatWin", id ?? null);
+  }
+  // Role "chat-term-head": the head of that window. A press beside the buttons drags the window (it floats, like the chat window).
+  chatTermHeadView() {
+    const p = props(), room = ROOM[p.source] ?? { title: p.source, color: P.muted };
+    const btn = (id, label, fn) => div().id(id).flex_none().px(9).py(4).rounded(5).border(1).border_color(P.line)
+      .bg(P.white).text_size(11).text_color(P.ink).cursor_pointer().hover((s) => s.bg(paint("#f1f3f6"))).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click(fn).child(label);
+    const close = () => { const w = shared("hakoniwa.chatWin"); if (w != null) { try { closeOverlay(w); } catch {} setShared("hakoniwa.chatWin", null); } };
+    return h_flex().id("chat-term-head").size_full().px(14).gap(8).items_center().bg(paint("#fafbfc")).border_b(1).border_color(P.line)
+      .child(badge(room.title, room.color, true))
+      .child(platformIcon(p, 14))
+      .child(div().flex_1().min_w(0).truncate().text_size(13).font_weight(700).text_color(P.ink).child(p.name ?? p.id ?? ""))
+      .child(btn("chat-term-chat", "Chat", () => this.openChat({ id: p.id, name: p.name, source: p.source, address: p.address, app: p.app, model_label: p.model, color: p.color })))
+      .child(btn("chat-term-close", "Close", close));
   }
 
   // ★81 Role "pick-head": the thin head over a shell picked from the left list. "× 閉じる" asks the office to drop the pick (hakoniwa.close).
