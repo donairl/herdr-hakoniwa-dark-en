@@ -12,6 +12,14 @@ export const RIGHT_EDGE = 0, RIGHT_COLLAPSED_W = 44;
 export const RIGHT_WIN_FRAME = 43, RIGHT_POP_GAP = 8;
 // The terminal's full-screen switch (shared "hakoniwa.termFull"): the right window's terminal (an agent's Terminal tab, or a shell picked from the left list) and the
 // Kanban's terminal window cover the whole App window while it is on. Pressed again (or the window closed): back to its normal place.
+// The folder an agent works in, short for a card: the home folder is "~", and a long path keeps only its last two folders ("…/parent/folder").
+export function compactPath(cwd, max = 38) {
+  if (!cwd) return null;
+  let p = String(cwd).replace(/[\\/]+$/, "").replace(/^(\/home\/[^/]+|\/Users\/[^/]+|[A-Za-z]:[\\/]Users[\\/][^\\/]+)(?=[\\/]|$)/, "~");
+  if (p.length <= max) return p || "/";
+  const sep = p.includes("\\") && !p.includes("/") ? "\\" : "/", parts = p.split(/[\\/]/).filter(Boolean);
+  return parts.length > 2 ? `…${sep}${parts.slice(-2).join(sep)}` : p;
+}
 export const termFullOn = (shared) => { try { return !!shared("hakoniwa.termFull")?.on; } catch { return false; } };
 // 9th Z3 / 14th D2: where each header chip starts at 1920px wide (measured in the 17:23 picture). The command path (no pointer) uses it for the chip lists and the inbox.
 export const CHIP_X = { blocked: 240, working: 392, done: 527, idle: 691 };

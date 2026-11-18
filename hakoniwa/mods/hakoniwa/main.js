@@ -11,7 +11,7 @@ import { agents, appHome, closeOverlay, exec, home, nextCommand, openOverlay, pa
 import { usageParts, stateMatches, usageAge } from "./life.js";
 import { isGenericTitle, applyLaunchKinds } from "./actions.js";
 import { withDefaults, problemText } from "./config-defaults.js";
-import { STATES, STATE, LONG_IDLE_MS, ROOM, REFRESH_MS, P, dot, chip, badge, clock, ago, platform, platformIcon, blockedText, applyRoomTitles, applyColors, fmtMem, hasMem, cleanupIds, CHIP_X, chipLeft } from "./common.js";
+import { STATES, STATE, LONG_IDLE_MS, ROOM, REFRESH_MS, P, dot, chip, badge, clock, ago, platform, platformIcon, blockedText, applyRoomTitles, applyColors, fmtMem, hasMem, cleanupIds, CHIP_X, chipLeft, compactPath } from "./common.js";
 import { ICON_DIR, icon } from "./icons.js";
 import { UI, LOGO_W, LOGO_H, LOGO_HEAD, CARET, showCaret, chipPeople, chipAction, chipListHeight, CHIP_LIST, clipName, NAME_EM_FULL } from "./ui-rules.js";
 import { OfficePart } from "./office.js";
@@ -546,6 +546,8 @@ class AgentHud extends View {
               .child(chip(a.color ?? P.muted, 7)).child(div().child(a.model_label ?? "Unknown model"))))
           .child(div().text_size(12).font_weight(600).text_color(P.ink).child(line))
           .child(div().text_size(10).text_color(P.muted).child(where))
+          .when(!!a.cwd, (el) => el.child(h_flex().id(`card-cwd-${a.id}`).gap(4).items_center().min_w(0).tooltip(String(a.cwd)) // the folder the agent works in (full path on hover)
+            .child(icon("folder", 12, P.muted)).child(div().flex_1().min_w(0).truncate().text_size(11).text_color(P.ink).child(compactPath(a.cwd)))))
           .when(!!par || kidsN > 0, (el) => el.child(h_flex().gap(4).items_center().flex_none().px(6).py(2).rounded(7).bg(STATE.working.wash)
             .text_size(10).text_color(P.blue).child(div().truncate().child(par ? `Leader: ${par.name || par.address}` : `${kidsN} worker${kidsN === 1 ? "" : "s"}`))))))
       .child(h_flex().gap(8).items_center()
