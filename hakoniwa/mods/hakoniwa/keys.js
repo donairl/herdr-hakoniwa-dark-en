@@ -94,24 +94,25 @@ export class KeysPart {
   broadcastView(cx) {
     const p = props() ?? {}, rows = Array.isArray(p.rows) ? p.rows : [], st = (this.bc ??= { on: new Set(), running: false, done: false, results: {}, error: null });
     const rooms = sendRooms(rows), chosen = sendChosen(rows, st.on), locked = st.running || st.done, close = () => closeOverlay(p.overlay);
-    const run = () => {
+    // Every handler redraws through the cx it is handed: the cx of the draw that made it no longer redraws once that draw is over (a tick showed only at the next redraw from elsewhere).
+    const run = (_e, c) => {
       if (locked) return;
       const text = sendText(this.bcText?.value?.());
-      if (!chosen.length || !text) { st.error = !chosen.length ? "Choose at least one agent" : "Type the instruction first"; cx.notify(); return; }
-      st.error = null; st.running = true; cx.notify();
-      cx.spawn(async (cx2) => {
+      if (!chosen.length || !text) { st.error = !chosen.length ? "Choose at least one agent" : "Type the instruction first"; c.notify(); return; }
+      st.error = null; st.running = true; c.notify();
+      c.spawn(async (cx2) => {
         try { await sendAll({ hc }, chosen, text, (id, r) => { st.results[id] = r; cx2.notify(); }); }
         finally { st.running = false; st.done = true; cx2.notify(); }
       });
     };
-    const toggle = (ids) => { if (locked) return; const allOn = ids.length > 0 && ids.every((id) => st.on.has(id)); for (const id of ids) { if (allOn) st.on.delete(id); else st.on.add(id); } st.error = null; cx.notify(); };
+    const toggle = (ids, c) => { if (locked) return; const allOn = ids.length > 0 && ids.every((id) => st.on.has(id)); for (const id of ids) { if (allOn) st.on.delete(id); else st.on.add(id); } st.error = null; c.notify(); };
     const box = (on, dim) => h_flex().flex_none().w(20).h(20).items_center().justify_center().rounded(5).border(1.5).border_color(on ? P.blue : P.line).bg(on ? P.blue : paint("#ffffff")).when(dim, (e) => e.opacity(0.4)).when(on, (e) => e.child(icon("check", 14, "#ffffff")));
     const btn = (id, label, fn, fill, dim = false) => div().id(id).flex_none().px(16).py(8).rounded(8).border(1).border_color(fill ? P.blue : P.line).bg(fill ? P.blue : paint("#ffffff"))
       .text_size(14).font_weight(700).text_color(fill ? "#ffffff" : P.ink).when(dim, (e) => e.opacity(0.45)).when(!dim, (e) => e.cursor_pointer().hover((s) => s.opacity(0.88)).on_click(fn)).child(label);
     const row = (t) => {
       const on = t.can && st.on.has(t.id), r = st.results[t.id], pending = st.running && on && !r, sc = STATE[t.status];
       return h_flex().id(`bc-row-${t.id}`).w_full().flex_none().h(SEND.row - 6).gap(10).px(10).items_center().rounded(10).border(1).border_color(on ? P.blue : P.line).bg(on ? paint("#e8f0fe") : paint("#ffffff"))
-        .when(t.can && !locked, (e) => e.cursor_pointer().on_click(() => toggle([t.id])))
+        .when(t.can && !locked, (e) => e.cursor_pointer().on_click((_e, c) => toggle([t.id], c)))
         .child(box(on, !t.can))
         .child(div().flex_none().w(10).h(10).rounded(5).bg(sc?.color ?? paint("#b8b2a6")))
         .child(div().flex_none().max_w(240).truncate().text_size(15).font_weight(700).text_color(t.can ? P.ink : P.muted).child(t.name))
@@ -123,9 +124,9 @@ export class KeysPart {
     const okN = Object.values(st.results).filter((r) => r.ok).length, failN = Object.values(st.results).length - okN, canIds = rows.filter((r) => r.can).map((r) => r.id);
     const chipEl = (id, label, ids) => { const on = ids.length > 0 && ids.every((x) => st.on.has(x));
       return h_flex().id(id).flex_none().h(28).px(10).items_center().rounded(8).border(1).border_color(on ? P.blue : P.line).bg(on ? paint("#e3edff") : paint("#ffffff"))
-        .when(!locked, (x) => x.cursor_pointer().on_click(() => toggle(ids))).child(div().max_w(160).truncate().text_size(13).font_weight(600).text_color(on ? P.blue : P.muted).child(label)); };
+        .when(!locked, (x) => x.cursor_pointer().on_click((_e, c) => toggle(ids, c))).child(div().max_w(160).truncate().text_size(13).font_weight(600).text_color(on ? P.blue : P.muted).child(label)); };
     return v_flex().id("bc-root").size_full().p(18).gap(12).bg(P.paper).overflow_hidden()
-      .on_key_down((e, c) => { if (e.key === "escape" && !st.running) { close(); c.stop_propagation(); } else if (e.key === "enter" && !locked) { run(); c.stop_propagation(); } })
+      .on_key_down((e, c) => { if (e.key === "escape" && !st.running) { close(); c.stop_propagation(); } else if (e.key === "enter" && !locked) { run(e, c); c.stop_propagation(); } })
       .child(h_flex().flex_none().gap(8).items_center()
         .child(div().text_size(17).font_weight(700).text_color(P.ink).child("Message several agents"))
         .child(div().text_size(14).font_weight(700).text_color(P.muted).child(`${chosen.length} / ${canIds.length}`)))
@@ -147,22 +148,22 @@ export class KeysPart {
     const p = props(), targets = Array.isArray(p.targets) ? p.targets : [], skipped = Array.isArray(p.skipped) ? p.skipped : [];
     const st = (this.bulk ??= { off: new Set(), running: false, done: false, results: {} }), kinds = bulkKinds(targets), chosen = bulkChosen(targets, st.off), locked = st.running || st.done;
     const close = () => closeOverlay(p.overlay);
-    const run = () => {
+    const run = (_e, c) => { // (redraws through the handler's own cx, as in broadcastView)
       if (locked || !chosen.length) return;
-      st.running = true; cx.notify();
-      cx.spawn(async (cx2) => {
+      st.running = true; c.notify();
+      c.spawn(async (cx2) => {
         try { await approveTargets({ hc, sleep: (ms) => cx2.sleep(ms) }, chosen, (id, r) => { st.results[id] = r; if (r.ok) { try { const pc = shared("hakoniwa.apcache") ?? {}; if (pc[id]) { const { [id]: _x, ...rest } = pc; setShared("hakoniwa.apcache", rest); } } catch {} } cx2.notify(); }); }
         finally { st.running = false; st.done = true; cx2.notify(); }
       });
     };
-    const toggle = (ids) => { if (locked) return; const allOn = ids.every((id) => !st.off.has(id)); for (const id of ids) { if (allOn) st.off.add(id); else st.off.delete(id); } cx.notify(); };
+    const toggle = (ids, c) => { if (locked) return; const allOn = ids.every((id) => !st.off.has(id)); for (const id of ids) { if (allOn) st.off.add(id); else st.off.delete(id); } c.notify(); };
     const box = (on) => h_flex().flex_none().w(20).h(20).items_center().justify_center().rounded(5).border(1.5).border_color(on ? P.blue : P.line).bg(on ? P.blue : paint("#ffffff")).when(on, (e) => e.child(icon("check", 14, "#ffffff")));
     const btn = (id, label, fn, fill, dim = false) => div().id(id).flex_none().px(16).py(8).rounded(8).border(1).border_color(fill ? P.blue : P.line).bg(fill ? P.blue : paint("#ffffff"))
       .text_size(14).font_weight(700).text_color(fill ? "#ffffff" : P.ink).when(dim, (e) => e.opacity(0.45)).when(!dim, (e) => e.cursor_pointer().hover((s) => s.opacity(0.88)).on_click(fn)).child(label);
     const row = (t) => {
       const on = !st.off.has(t.id), r = st.results[t.id], pending = st.running && on && !r;
       return h_flex().id(`bulk-row-${t.id}`).w_full().flex_none().h(BULK.row - 6).gap(10).px(10).items_center().rounded(10).border(1).border_color(on ? paint("#f2c58a") : P.line).bg(on ? paint("#fff1df") : paint("#ffffff"))
-        .when(!locked, (e) => e.cursor_pointer().on_click(() => toggle([t.id]))).tooltip(t.full || t.what)
+        .when(!locked, (e) => e.cursor_pointer().on_click((_e, c) => toggle([t.id], c))).tooltip(t.full || t.what)
         .child(box(on))
         .child(v_flex().flex_1().min_w(0)
           .child(h_flex().gap(6).items_center().min_w(0)
@@ -181,7 +182,7 @@ export class KeysPart {
       .when(kinds.length > 1, (e) => e.child(h_flex().id("bulk-kinds").flex_none().h(28).gap(6).items_center()
         .children(kinds.map((k) => { const ids = targets.filter((t) => t.kind === k.kind).map((t) => t.id), on = ids.some((id) => !st.off.has(id));
           return h_flex().id(`bulk-kind-${k.kind}`).flex_none().h(28).px(10).gap(6).items_center().rounded(8).border(1).border_color(on ? P.blue : P.line).bg(on ? paint("#e3edff") : paint("#ffffff"))
-            .when(!locked, (x) => x.cursor_pointer().on_click(() => toggle(ids))).tooltip(on ? `Leave out every "${k.kind}"` : `Include every "${k.kind}"`)
+            .when(!locked, (x) => x.cursor_pointer().on_click((_e, c) => toggle(ids, c))).tooltip(on ? `Leave out every "${k.kind}"` : `Include every "${k.kind}"`)
             .child(div().text_size(13).font_weight(600).text_color(on ? P.blue : P.muted).child(`${k.kind} ${k.n}`)); }))))
       .child(v_flex().id("bulk-scroll").flex_1().min_h(0).overflow_y_scrollbar().gap(6).children(targets.map(row)))
       .when(skipped.length > 0, (e) => e.child(div().id("bulk-skipped").flex_none().truncate().text_size(12).text_color(P.muted).tooltip(skipped.map((s) => s.name).join(", ")).child(`${skipped.length} more waiting cannot be answered from here (answer in the terminal)`)))
