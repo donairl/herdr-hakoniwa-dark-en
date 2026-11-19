@@ -1135,7 +1135,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       const prevT = this.focusTerm; this.focusTerm = ft;
       if (prevT !== undefined && ft && ft !== prevT && this.focusToPerson(ft, list)) cx.timer.after(0, () => setShared("hakoniwa.sel", this.selId));
     }
-    { const tr = shared("hakoniwa.tab"); if (tr?.at && tr.at !== this.tabAt) { this.tabAt = tr.at; if (tr.id === this.selId) this.detailTab = tr.tab; } } // ★84 a tab pressed in the window (its own instance): the window is opened again with it (syncTerm)
+    { const tr = shared("hakoniwa.tab"); if (tr?.at && tr.at !== this.tabAt) { this.tabAt = tr.at; if (tr.id === this.selId) this.detailTab = tr.tab === "toggle" ? (this.detailTab === "chat" ? "terminal" : "chat") : tr.tab; } } // "toggle": the key (keys.js `tab`), Terminal <-> Chat // ★84 a tab pressed in the window (its own instance): the window is opened again with it (syncTerm)
     { const rc = shared("hakoniwa.rcollapse"); if (rc?.at && rc.at !== this.rcAt) { this.rcAt = rc.at; this.rightCollapsed = !!rc.on; } } // ★103-4 the right window folded to / opened from the edge strip (pressed in the window's own instance; syncTerm opens it again)
     const sel = this.selected(list);
     if (this.open && !sel) this.open = false;

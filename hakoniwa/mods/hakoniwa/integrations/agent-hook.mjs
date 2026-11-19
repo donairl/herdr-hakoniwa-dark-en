@@ -1,7 +1,7 @@
 // Cursor・Copilot のフックから呼ぶ。標準入力のイベントを OSC 7501 の状態へ変えて、端末へ直接書く。
 // 使い方: node agent-hook.mjs <cursor|copilot> [イベント名]   （イベント名が無ければ標準入力の JSON から読む）
 // HC_TERMINAL_ID が無ければ何もしない。標準出力はエージェントが受け取るので、必要最小限だけ返す。
-import { emitViaAttach } from "./app-state-emit.mjs";
+import { emitFromHook } from "./app-state-emit.mjs";
 
 const agent = process.argv[2] ?? "agent";
 const argEvent = process.argv[3] ?? "";
@@ -58,7 +58,7 @@ switch (event) {
     break;
 }
 
-if (state) emitViaAttach(state, agent, opts);
+if (state) emitFromHook(state, agent, opts); // Windows: the terminal's console; elsewhere: its tty
 
 // Cursor は種類ごとに期待する標準出力が違う。Copilot は何も返さない。
 if (agent === "cursor") {

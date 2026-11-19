@@ -49,6 +49,31 @@ export function emitViaAttach(state, app, opts = {}) {
   return p.status === 0;
 }
 
+// Linux / macOS: a hook's process usually still has the agent's terminal as its controlling terminal, so /dev/tty reaches it (emit).
+// When it has none (the agent started the hook detached), the terminal's own device is asked of `ps` for the terminal's root process.
+export function ttyOf(psOut) {
+  const t = String(psOut ?? "").trim().split(/\s+/)[0] ?? "";
+  return !t || t === "?" || t === "??" || t === "-" ? null : t.startsWith("/dev/") ? t : `/dev/${t}`;
+}
+export function emitViaTty(state, app, opts = {}) {
+  const tid = process.env.HC_TERMINAL_ID;
+  if (!tid || process.platform === "win32") return false;
+  if (emit(state, app, opts)) return true;
+  const hc = process.env.HC_BIN || "hc";
+  let pid;
+  try { pid = JSON.parse(spawnSync(hc, ["get", tid, "--json"], { encoding: "utf8", timeout: 3000 }).stdout).pid; } catch { return false; }
+  if (!pid) return false;
+  const tty = ttyOf(spawnSync("ps", ["-o", "tty=", "-p", String(pid)], { encoding: "utf8", timeout: 3000 }).stdout);
+  if (!tty) return false;
+  try {
+    const fd = fs.openSync(tty, "w");
+    try { fs.writeSync(fd, oscBody(state, app, opts)); } finally { fs.closeSync(fd); }
+    return true;
+  } catch { return false; }
+}
+// The one the hooks call: the way that works on this system.
+export const emitFromHook = (state, app, opts = {}) => (process.platform === "win32" ? emitViaAttach(state, app, opts) : emitViaTty(state, app, opts));
+
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   const [state, app, ...rest] = process.argv.slice(2);
   const opt = {};

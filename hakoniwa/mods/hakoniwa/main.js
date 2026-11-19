@@ -24,6 +24,7 @@ import { RoomPart } from "./room.js";
 import { MeetPart } from "./meet.js";
 import { PanelPart } from "./panel.js";
 import { FeedPart } from "./feed.js";
+import { KeysPart } from "./keys.js";
 import { fmtTokens } from "./feed-rules.js";
 import { paint, syncAppearance, uiTheme, isDark } from "./palette.js"; // light -> dark UI colours (follows the appearance)
 
@@ -36,7 +37,7 @@ class AgentHud extends View {
     this.observed = {};
     this.size = { width: 1200, height: 600 };
     const role = props()?.role ?? "board";
-    if (role === "pane" || role === "usage" || role === "confirm" || role === "move" || role === "pick-head" || role === "chat-term-head" || role === "state-list" || role === "feed") return;
+    if (role === "pane" || role === "usage" || role === "confirm" || role === "move" || role === "pick-head" || role === "chat-term-head" || role === "state-list" || role === "feed" || role === "approve-all") return;
     if (role === "inbox") { // ★106 ② (detail.js). 13th B4: the inbox window read no collector state, so items() lacked parent_id and a child handed back to its parent still counted as 報告あり (chip 3 vs inbox 4): read the feed like the head does
       this.watchApprovals(cx);
       cx.spawn(async (cx2) => { try { await this.loadConfig(); if (await this.load()) cx2.notify(); } catch {} });
@@ -54,9 +55,10 @@ class AgentHud extends View {
     if (role !== "band") cx.timer.every(30000, (cx) => cx.notify());
     // "hakoniwa.chat-next" (keys.json or herdr-app do): the conversation of whoever needs you first.
     // "hakoniwa.demo": switch the made-up agents on / off (shared "hakoniwa.demo").
-    if (role === "band") cx.spawn(async () => {
+    if (role === "band") cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
+        try { if (this.keyCommand(command, cx)) continue; } catch { continue; } // next / prev / attention / approve / reject / approve-all / tab (keys.js): a key must never end this loop
         if (await this.reviewCommand(command)) continue; // ★61-1 select / plate / stop / launch[:target] (room.js): review pictures without clicks
         if (command === "demo") { setShared("hakoniwa.demo", !this.demo()); continue; }
         if (command === "close") { this.popCloseAll(); setShared("hakoniwa.close", { at: Date.now() }); if (shared("hakoniwa.inboxOpen")?.on) setShared("hakoniwa.inboxOpen", { on: false, at: Date.now() }); this.closeInboxWin?.(); continue; } // closes the side panel (and the inbox window: 8th Y2) (for the review pictures)
@@ -250,6 +252,7 @@ class AgentHud extends View {
     if (role === "usage") return this.usageView();
     if (role === "state-list") return this.stateListView(); // ★103-2 (2nd)
     if (role === "feed") return this.feedView(cx); // ★106 recent moves (feed.js)
+    if (role === "approve-all") return this.approveAllView(cx); // the list before several requests are approved at once (keys.js)
     this.syncMode(cx);
     const list = this.items();
     if (role === "band") return this.band(list);
@@ -571,7 +574,7 @@ class AgentHud extends View {
 }
 
 // Office and chat live in their own files; their methods join the class here.
-for (const part of [OfficePart, ChatPart, DetailPart, GridPart, LaunchPart, RoomPart, MeetPart, PanelPart, RegionPart, FeedPart])
+for (const part of [OfficePart, ChatPart, DetailPart, GridPart, LaunchPart, RoomPart, MeetPart, PanelPart, RegionPart, FeedPart, KeysPart])
   for (const k of Object.getOwnPropertyNames(part.prototype))
     if (k !== "constructor") AgentHud.prototype[k] = part.prototype[k];
 

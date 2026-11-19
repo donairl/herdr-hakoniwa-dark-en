@@ -1,7 +1,7 @@
 {
   "_help": "Copy to config.json (same folder) and keep only what you change. Every key is optional: without config.json the mod finds Python on PATH (Windows: pythonw, python, py; elsewhere python3, python), runs the scripts in py/, and reads the state file where the collector writes it. Keys starting with _help are notes and are ignored.",
 
-  "_help_paths": "Absolute paths of the programs; null = found by the mod. Set python when it is not on PATH (e.g. \"C:/Python312/pythonw.exe\"). collector / office_script: default <herdr-app>/mods/hakoniwa/py/hakoniwa-collector.py and hakoniwa-office.py. state_dir / state: where the collector writes state.json (default %LOCALAPPDATA%/hakoniwa; set them together with the collector's --out only if you move it).",
+  "_help_paths": "Absolute paths of the programs; null = found by the mod. Set python when it is not on PATH (e.g. \"C:/Python312/pythonw.exe\"). collector / office_script: default <herdr-app>/mods/hakoniwa/py/hakoniwa-collector.py and hakoniwa-office.py. state_dir / state: where the collector writes state.json (default %LOCALAPPDATA%/hakoniwa; set them together with the collector's --out only if you move it). Without them the collector writes to %LOCALAPPDATA%/hakoniwa on Windows, ~/Library/Application Support/hakoniwa on macOS and $XDG_STATE_HOME/hakoniwa (default ~/.local/state/hakoniwa) on Linux.",
   "python": null,
   "collector": null,
   "office_script": null,
@@ -32,6 +32,9 @@
 
     "_help_weather": "The wall board and the window show the weather from Open-Meteo (free, no key), asked by the collector at most every 30 minutes. No place given: a city chosen from the PC's timezone. place: a city name, looked up once. lat / lon: exact (beats place). label: the name on the board. enabled: false never asks.",
     "weather": {"enabled": true, "place": null, "lat": null, "lon": null, "label": ""},
+
+    "_help_notify": "The system's own notification (Linux: notify-send, macOS: osascript, Windows: a PowerShell toast) when somebody starts to wait for your answer (blocked) or brings a report (done). on: which of the two. when: \"away\" = only while the Herdr window is not the one in front (inside it Herdr shows its own toast), \"always\" = every time. enabled: false never sends one.",
+    "notify": {"enabled": true, "on": ["blocked", "done"], "when": "away"},
 
     "_help_board": "The LED board on the wall: rows of dots (its width follows the room unless set).",
     "board": {"rows": 30},

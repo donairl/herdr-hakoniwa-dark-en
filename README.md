@@ -30,7 +30,8 @@ The screen text is in **English**.
 | Herdr App with herdr-core (`hc` on PATH) | the agents' states come from the App and `hc` |
 | Python 3.10 or later on PATH | Windows: `pythonw`, `python` or `py`; elsewhere `python3` or `python` (or set `python` in `config.json`) |
 | `numpy` and `Pillow` for that Python | `python -m pip install numpy pillow` (the office picture is made with them) |
-| Windows | made and tested on Windows 11. macOS / Linux are not tested |
+| Windows, Linux or macOS | made on Windows 11. This fork also runs on Linux (tested on Arch-based CachyOS); macOS uses the same code paths as Linux where it can but is not tested |
+| `notify-send` (Linux only, optional) | for desktop notifications; it comes with `libnotify`. Without it the office works, just silently |
 | Node.js | only for the Cursor / Copilot hooks (below) |
 
 T3 Code and herdr TUI are optional: what is not on the PC is not shown.
@@ -61,6 +62,9 @@ herdr-app do layout.switch --name hakoniwa
 The first start cuts the art out of the sheets and builds the people: the floor says "Preparing the office…" for a minute or two
 while a background run finishes, then it appears. `ctrl-shift-l` switches back to your own layout.
 
+To use the keys below, merge `hakoniwa/keys.json` into `~/.config/herdr-app/keys.json` (it adds one section, `layout:hakoniwa`,
+so the keys only act while this layout shows).
+
 **Cursor, Copilot and OpenCode** do not report their state to the App by themselves. To see them work, install the hooks
 (they are new files, except Cursor's `hooks.json`, which is backed up first and only gets entries added):
 
@@ -70,12 +74,35 @@ python ~/.config/herdr-app/mods/hakoniwa/integrations/install-hooks.py          
 python ~/.config/herdr-app/mods/hakoniwa/integrations/install-hooks.py --uninstall  # remove only what it added
 ```
 
+## Keys
+
+From `hakoniwa/keys.json` (change them there or in your own `keys.json`). They are `alt` chords on purpose: a plain letter would be
+taken away from whatever you are typing to an agent.
+
+| Key | What it does |
+|---|---|
+| `alt-.` / `alt-,` | the next / previous agent |
+| `alt-n` | the next agent that needs you (waiting for an answer first, then reports) |
+| `alt-a` / `alt-r` | approve / reject what the chosen agent asks. With nobody chosen it only chooses the first one who waits, so nothing is ever answered unseen |
+| `alt-shift-a` | "Approve requests": a list of every request that can be answered from the office |
+| `alt-t` | the right window: Terminal ↔ Chat |
+| `alt-i` | open / close the inbox |
+| `alt-x` | close the right window and the popups |
+
+**Approve requests** (also the "Approve all…" button in the inbox when two or more wait) shows who asks what; hover a row for the
+whole question. Switch off a kind ("Bash command", "Edit file") or single rows, then press "Approve N". Each agent is approved only
+if its screen still shows exactly the question that was listed: one that has moved on to another question is left alone. Agents of
+T3 Code and herdr TUI, and screens that cannot be read, are never in the list.
+
+**Notifications**: when an agent starts to wait for you or brings a report while the Herdr window is not in front, the office asks
+the system to show a notification (`office.notify` in `config.json`; `"when": "always"` shows them every time, `"enabled": false` never).
+
 ## Settings
 
 Nothing is needed. To change something, copy `mods/hakoniwa/config.example.json` to `mods/hakoniwa/config.json` and keep
 only the keys you change. The main ones: `office.rooms` (rooms and their names), `office.sources` (which boxes to collect),
 `office.weather` (`{"place": "Osaka"}`, `{"lat": 34.69, "lon": 135.50, "label": "OSAKA"}` or `{"enabled": false}`),
-`office.colors`, and `office.launch` (how agents started from the office begin: by default each CLI as it starts by itself,
+`office.colors`, `office.notify` (desktop notifications), and `office.launch` (how agents started from the office begin: by default each CLI as it starts by itself,
 with no permission widened; e.g. `"codex": {"argv": ["codex", "-s", "workspace-write"]}`).
 
 `herdr-app do hakoniwa.demo` switches a made-up cast on and off (for screenshots).
@@ -94,6 +121,11 @@ Herdr asks you to know this before adding a mod. Hakoniwa does all three:
     or press approve / reject; `label` when you rename one.
   - `herdr` (the TUI) when herdr TUI agents are collected; the agent CLIs (`claude`, `codex`, `opencode`, `cursor-agent`,
     `agy`) when you start an agent, and their `--help` / `models` lists once a day for the new-agent window.
+  - For a desktop notification (see Keys above): `notify-send` on Linux, `osascript` on macOS, `powershell.exe` with
+    `mods/hakoniwa/integrations/notify.ps1` on Windows. The agent's own words are passed as plain arguments, never run.
+    `"office": {"notify": {"enabled": false}}` turns it off.
+  - On macOS, `ps` once per collector run (which process belongs to which agent, and its memory). Linux reads `/proc` and
+    Windows asks the system directly; neither starts a program for it.
   - App commands: it focuses, opens, renames and closes spaces, tabs and terminals when you ask for it in the office. **By
     itself** it also keeps rooms with their people: it closes a space 6 s after the last agent it saw there is gone and no
     terminal is left in it, names a new space after its first agent, and moves a leader's workers into one space.
@@ -102,13 +134,16 @@ Herdr asks you to know this before adding a mod. Hakoniwa does all three:
   `~/.claude/sessions` (conversations), `~/.codex/sessions`, the OpenCode database (`~/.local/share/opencode/opencode.db`),
   `~/.t3/userdata/statev2.sqlite` (T3 Code), and herdr TUI through its CLI.
 - **Files it writes**: `~/.config/herdr-app/hakoniwa-office/` (the pictures and its own logs; a few hundred MB),
-  `%LOCALAPPDATA%/hakoniwa/` (`state.json`). A Claude started from the office gets a small `--settings` file from
+  and the state folder (`state.json`): `%LOCALAPPDATA%/hakoniwa/` on Windows, `~/Library/Application Support/hakoniwa/` on
+  macOS, `$XDG_STATE_HOME/hakoniwa/` (default `~/.local/state/hakoniwa/`) on Linux. Earlier versions wrote to
+  `~/AppData/Local/hakoniwa/` on Linux and macOS too: that folder is moved to the new place the first time. A Claude started from the office gets a small `--settings` file from
   `hakoniwa-office/` that keeps its conversation (`office.launch.claude_settings` in `config.json` turns it off).
 
 ## Remove it
 
 Delete `layouts/hakoniwa.json`, `mods/hakoniwa/`, `hakoniwa-office/` (all under `~/.config/herdr-app`) and
-`%LOCALAPPDATA%/hakoniwa/`. Run `install-hooks.py --uninstall` first if you installed the hooks.
+the state folder named above, and the `layout:hakoniwa` section of `keys.json` if you added it. Run `install-hooks.py --uninstall`
+first if you installed the hooks.
 
 ## About Trellis
 

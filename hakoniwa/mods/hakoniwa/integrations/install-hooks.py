@@ -82,7 +82,7 @@ def install_cursor(dry: bool) -> None:
 def install_copilot(dry: bool) -> None:
     print("Copilot:")
     hooks = {
-        ev: [{"type": "command", "powershell": f'node "{HOOK}" copilot {ev}', "timeoutSec": 5}]
+        ev: [{"type": "command", "bash": f'node "{HOOK}" copilot {ev}', "powershell": f'node "{HOOK}" copilot {ev}', "timeoutSec": 5}]  # bash: Linux / macOS, powershell: Windows
         for ev in COPILOT_EVENTS
     }
     print(f"  置く: {COPILOT_DST}")

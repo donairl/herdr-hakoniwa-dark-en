@@ -1,7 +1,7 @@
 // hakoniwa ③ recent moves + ⑤ OpenCode usage (★106 office-feed106). Methods join AgentHud (main.js); state lives in this.fd (this.feed is the collector's).
 import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { appHome, closeOverlay, exec, openOverlay, props, readTextFile, setShared, shared, writeTextFile } from "herdr";
+import { appHome, closeOverlay, exec, openOverlay, props, readTextFile, setShared, shared, window as herdrWindow, writeTextFile } from "herdr"; // `window` from herdr is a function (the title bar's facts): never under its own name (13th B6 below)
 import { paint } from "./palette.js"; // light -> dark UI colours (follows the appearance)
 // 13th B6: `window` is the ambient gpui Window. Importing `window` from "herdr" (a function: titlebar info) hid it, so viewport_size() threw and winSize() / publishWin() never worked.
 const vpSize = () => { try { const v = globalThis.window?.viewport_size?.(); return v && v.width > 0 ? v : null; } catch { return null; } };
@@ -9,6 +9,7 @@ import { STATE, P, ago, clock, RIGHT_POP_GAP } from "./common.js";
 import { UI } from "./ui-rules.js";
 import { icon } from "./icons.js";
 import { FEED_FILTERS, trackMoves, addMoves, filterMoves, parseLog, parseOpenCode } from "./feed-rules.js";
+import { notifySettings, notifyPlan, notifyArgv } from "./notify-rules.js";
 
 const FEED_W = 460, FEED_H = 420, FOOTER_H = 40, FEED_BTN_X = 330 /* where the footer button starts (measured 378 in the 17:23 picture with the Japanese labels; ~330 estimated for the shorter English "Agents" / "Spaces" / "Updated" facts) */, USAGE_W = 340, WIN_DEFAULT = { w: 1920, h: 1152 } /* the window measured in usability104 (last resort for `at`) */, STATE_WORD = { working: "Working", idle: "Idle", blocked: "Blocked", done: "Report" };
 export const POP_KINDS = ["feed", "usage", "chip", "inbox"];
@@ -26,6 +27,7 @@ export class FeedPart {
     const r = trackMoves(fd.seen ?? Object.fromEntries(list.map((a) => [a.id, a.status])), list, Date.now());
     fd.seen = r.seen;
     if (!r.added.length) return;
+    this.desktopNotify(r.added, list, cx);
     fd.log = addMoves(fd.log, r.added);
     if (fd.writing) return;
     fd.writing = true;
@@ -33,6 +35,22 @@ export class FeedPart {
       fd.writing = false;
       try { const path = `${appHome()}/hakoniwa-office/feed.json`, prev = await readTextFile(path).catch(() => null); await writeTextFile(path, JSON.stringify({ log: fd.log }), prev); } catch {}
     });
+  }
+
+  // The system's own notification for the people who began to wait / brought a report at this moment (notify-rules.js decides which and when:
+  // by default only while the Herdr window is not in front, where its own toast cannot be seen). Only the footer's copy calls this (one footer,
+  // one notification). A program that is missing or fails is not tried again for 10 minutes, and nothing is shown about it: the office works without.
+  desktopNotify(added, list, cx) {
+    try {
+      const now = Date.now(); if (this.notifyOffUntil > now) return;
+      const w = herdrWindow() ?? {}, where = (id) => { const a = list.find((x) => x.id === id); return a?.space || a?.island_title || ""; };
+      const plan = notifyPlan(added, notifySettings(this.feed?.config), w.active === true, where); if (!plan.length) return;
+      const home = appHome(), files = { icon: `${home}/mods/hakoniwa/icons/hakoniwa-32.png`, ps1: `${home}/mods/hakoniwa/integrations/notify.ps1` };
+      for (const n of plan) {
+        const run = notifyArgv(w.platform, n, files); if (!run) return;
+        cx.spawn(async () => { try { const r = await exec(run.cmd, run.args, { timeout: 15000 }); if (r?.code) this.notifyOffUntil = Date.now() + 600000; } catch { this.notifyOffUntil = Date.now() + 600000; } });
+      }
+    } catch {}
   }
 
   // W: the click and the review command (room.js `feed`) open the same popup (no pointer known from a command: the App places it)

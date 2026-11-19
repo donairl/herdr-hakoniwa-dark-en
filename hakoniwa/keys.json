@@ -1,0 +1,13 @@
+{
+  "layout:hakoniwa": {
+    "alt-.": "hakoniwa.next",
+    "alt-,": "hakoniwa.prev",
+    "alt-n": "hakoniwa.attention",
+    "alt-a": "hakoniwa.approve",
+    "alt-r": "hakoniwa.reject",
+    "alt-shift-a": "hakoniwa.approve-all",
+    "alt-t": "hakoniwa.tab",
+    "alt-i": "hakoniwa.inbox",
+    "alt-x": "hakoniwa.close"
+  }
+}

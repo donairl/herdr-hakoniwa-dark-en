@@ -116,6 +116,8 @@ export function inboxView(part) {
       .when(kinds.length > 0, (e) => e.child(h_flex().id("inbox-kinds").gap(6).items_center() // 5th X2: the total = the two header chips added up; 19th K5: the pressed kind first and darker
         .children(kinds.map((k, i) => div().text_size(12).font_weight(i === 0 ? 700 : 400).text_color(i === 0 ? STATE[k]?.color ?? P.ink : P.muted).child(`${k === "blocked" ? "Blocked" : "Report"} ${nOf(k)}`)))))
       .child(div().flex_1())
+      // Two or more wait and can be answered from here: one button opens the list of all of them (keys.js; nothing is pressed before that list's own button)
+      .when(rows.filter((a) => a.status === "blocked" && a.source === "app" && a.address).length >= 2 && typeof part.openApproveAll === "function", (e) => e.child(link("inbox-approve-all", "Approve all…", (cx) => part.openApproveAll(rows, cx), { color: P.blue, border: P.blue })))
       .child(iconBtn("inbox-close", "x", () => { setShared("hakoniwa.inboxOpen", { on: false, at: Date.now() }); const o = props()?.overlay; if (o != null) closeOverlay(o); }, { size: 36, isize: 20 })))
     .when(note, (e) => e.child(div().id("inbox-note").flex_none().h(INBOX_NOTE_H).px(14).flex().items_center().text_size(12).text_color(P.muted).child(INBOX_NOTE_TEXT))) // 35b 29-W7; 36b 30-X3: one step darker (was #b0aa9b)
     .child(div().id("inbox-scroll").flex_1().min_h(0).overflow_y_scrollbar().on_size_change(measure("view"))

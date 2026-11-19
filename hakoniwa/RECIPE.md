@@ -53,7 +53,18 @@ Top to bottom (layout `hakoniwa`, theme `paper`, UI font Geist 13, window backgr
 - **Clicks**: a person, a chip in the band or a row in the lists picks that agent and opens the right column; the band's
   state chips pick the first agent in that state; a room's name plate opens the list of its people (click one to pick it);
   the floor has zoom controls and can be dragged. **Hover** shows tooltips on buttons and people. **Keys**: Esc closes the
-  chat slide, the inbox and the new-agent window.
+  chat slide, the inbox and the new-agent window. `keys.json` (section `layout:hakoniwa`, `alt` chords so typing to an
+  agent is never taken): `alt-.` / `alt-,` the next / previous agent, `alt-n` the next one that needs the person, `alt-a` /
+  `alt-r` approve / reject the chosen agent's request (nobody chosen: only chooses the first waiting one), `alt-shift-a`
+  the "Approve requests" window, `alt-t` Terminal ↔ Chat, `alt-i` the inbox, `alt-x` close.
+- **Approve requests** (`alt-shift-a`, or "Approve all…" in the inbox when two or more App agents wait): a dialog (560 px)
+  that lists each waiting App agent whose screen shows a readable question with a "yes": name, room, the question's first
+  line (the whole dialog in the tooltip). A chip per kind of request ("Bash command 3") and a click on a row switch them
+  off; "Approve N" presses the "yes" number of each chosen agent, side by side, and every row then says "Approved" or why
+  not. An agent is pressed only if its screen still shows the same dialog text that was listed.
+- **Desktop notifications** (`office.notify`, on by default): when an agent turns blocked or done while the Herdr window is
+  not the active one, the footer's copy asks the system for a notification (title "<name> needs your answer" / "<name> has
+  a report", body the agent's own status line or its room). More than three at one moment become one that counts them.
 - **Rooms live with their people** (`office.auto_rooms`, on by default): a space whose last agent is gone and that has no
   terminal left is closed after 6 s, a new space is named after its first agent, and a leader's workers are gathered in one
   space.
@@ -74,20 +85,25 @@ Top to bottom (layout `hakoniwa`, theme `paper`, UI font Geist 13, window backgr
   (conversation and approval), `panel.js` / `region.js` / `room.js` / `inbox.js` / `feed.js` / `launch.js` / `grid.js`,
   `actions.js` (the app commands as plans: `tab.new`, `space.new`, `space.close`, `space.rename`, `space.select`,
   `tab.rename`, `terminal.park`, `terminal.keep`, `terminal.kill`, `agent.focus`, `layout.hide`, `layout.resize`),
-  `common.js` / `ui.js` / `ui-rules.js` / `icons.js` (`icons/*.svg`, the logo PNGs), `config-defaults.js`.
+  `common.js` / `ui.js` / `ui-rules.js` / `icons.js` (`icons/*.svg`, the logo PNGs), `config-defaults.js`,
+  `keys.js` / `keys-rules.js` (the key commands and "Approve requests"), `notify-rules.js` (desktop notifications; sent
+  from `feed.js`).
   Windows it opens with `openOverlay`: the chat window (`key: "hakoniwa-chat"`), the inbox (`"hakoniwa-inbox"`), a terminal
-  window (`"hakoniwa-term"`), dialogs `launch`, `confirm`, `room-new`, `tui-prompt`.
+  window (`"hakoniwa-term"`), dialogs `launch`, `confirm`, `room-new`, `tui-prompt`, `approve-all`.
 - **herdr functions**: `agents()`, `spaces()`, `panes()`, `focused()`, `settings()`, `run()`, `exec()`, `hc()` (`ls --json`,
   `get --json`, `read`, `send`, `keys`, `label`), `readTextFile`, `writeTextFile`, `watchFolder`, `shared` / `setShared`
   (keys `hakoniwa.*`: `view`, `demo`, `sel`, `pick`, ...), `nextCommand` (commands `hakoniwa.view`, `hakoniwa.demo`,
-  `hakoniwa.chat-next`, ...), `openOverlay` / `closeOverlay`, `pickFolder`, `appHome()`, `home()`.
+  `hakoniwa.chat-next`, `hakoniwa.next`, `hakoniwa.prev`, `hakoniwa.attention`, `hakoniwa.approve`, `hakoniwa.reject`,
+  `hakoniwa.approve-all`, `hakoniwa.tab`, ...), `openOverlay` / `closeOverlay`, `pickFolder`, `appHome()`, `home()`,
+  `notify()` (what a key did), `window()` (`active`, `platform`).
 - **Programs**: Python 3.10+ runs `py/hakoniwa-collector.py` (stdlib only: herdr-core's named pipe and `hc`, the `herdr`
   CLI for herdr TUI, T3 Code's SQLite read-only, Claude Code / Codex transcripts, `~/.claude.json` usage, Open-Meteo weather
   every 30 min) which writes `state.json`; `py/hakoniwa-office.py` with `py/hakoniwa_sprites.py` (numpy, Pillow) plans the
   floor for the agents and the window size and writes the scene (JSON) and its pictures under
   `<herdr-app>/hakoniwa-office/`; `py/hakoniwa_models.py` lists each agent CLI's models for the new-agent window;
   `opencode-usage.py` reads OpenCode's token use. Agent CLIs start with `office.launch.kinds` (default: `claude`, `codex`,
-  `opencode`, `cursor-agent`, `agy` with no extra words).
+  `opencode`, `cursor-agent`, `agy` with no extra words). A desktop notification runs `notify-send` (Linux), `osascript`
+  (macOS) or `powershell.exe -File integrations/notify.ps1` (Windows), each text as its own argument.
 - **Art**: 33 generated pixel-art sheets plus six folders of 2:1 isometric pieces in `py/sheets/` (room parts, desks,
   people in poses and 8-frame walks, windows, outside views, weather, moon, equipment, plants). The sprites code cuts the
   pieces by their alpha, recolours people from the agent id (jacket, hair, skin) and keeps them in `hakoniwa-office/sheet/`.
@@ -99,16 +115,23 @@ Top to bottom (layout `hakoniwa`, theme `paper`, UI font Geist 13, window backgr
   until it is done (about 1–2 minutes). Only one plan runs at a time (`hakoniwa.planflight`); a stuck plan keeps the last
   floor.
 - **Nothing Python writes may land in `mods/hakoniwa/`**: a file saved there reloads the mod. The scripts set
-  `sys.dont_write_bytecode` (no `__pycache__`), and every output goes to `<herdr-app>/hakoniwa-office/` or
-  `%LOCALAPPDATA%/hakoniwa/`.
+  `sys.dont_write_bytecode` (no `__pycache__`), and every output goes to `<herdr-app>/hakoniwa-office/` or the state
+  folder (`%LOCALAPPDATA%/hakoniwa/` on Windows, `~/Library/Application Support/hakoniwa/` on macOS,
+  `$XDG_STATE_HOME/hakoniwa/`, default `~/.local/state/hakoniwa/`, on Linux).
 - **No config.json**: the mod finds Python itself (`pythonw`, `python`, `py` on Windows; `python3`, `python` elsewhere) by
   running `hakoniwa-collector.py --where`, which also says where `state.json` is and whether numpy / Pillow are there; the
   band says what is missing.
 - **The name is in many places**: renaming the mod means its folder, the `mod` names in the layout, `MOD_DIR` in
   `config-defaults.js`, the `mods/hakoniwa/` paths in `feed.js` and `icons.js`, the `hakoniwa.*` commands and shared keys,
-  and the Python folders `hakoniwa-office` and `%LOCALAPPDATA%/hakoniwa`.
-- **Windows first**: the collector reads the process table with Toolhelp (no WMI) and uses `pythonw` to avoid console
-  windows. macOS / Linux are not tested.
+  and the Python folders `hakoniwa-office` and the state folder `hakoniwa`.
+- **Three systems, three ways to see processes**: the collector needs `{pid: (parent, name)}` and each process's memory to
+  find an agent's Claude session, model and memory. Windows: Toolhelp and psapi (no WMI), with `pythonw` to avoid console
+  windows. Linux: `/proc/<pid>/stat` and `statm`. macOS: one `ps -axo pid=,ppid=,rss=,comm=` per run. Without the table
+  every agent shows "Unknown model" and no memory. Linux is tested; macOS and the Windows toast (`notify.ps1`) are not.
+- **The hooks reach the terminal differently**: on Windows `agent-hook.mjs` attaches to the terminal's console
+  (`console-write.ps1`); elsewhere it writes the OSC 7501 line to `/dev/tty`, or to the terminal root process's tty.
+- **Plain-letter keys are not bound**: a `layout:` key also fires while the person types to an agent, so every key is an
+  `alt` chord. The approve key never answers for somebody who is not chosen.
 - **Cursor, Copilot and OpenCode** report no state by themselves: without `integrations/install-hooks.py` they stay idle.
 - **Memory**: the App grows with the pictures; over about 1.2 GB the band suggests restarting it. The demo was tried up to
   40 people in 8 spaces.
@@ -126,6 +149,11 @@ Top to bottom (layout `hakoniwa`, theme `paper`, UI font Geist 13, window backgr
   appears within about two minutes, with one room per space that has an agent.
 - `herdr-app do hakoniwa.demo` shows the made-up cast in all four states (working, blocked with `!`, done with `✓`, idle
   with a red mug) and a leader with a gold ring; the same command turns it off.
+- `hakoniwa-collector.py --stdout` on Linux gives a Claude Code agent a `model`, a `session_id` and `mem_bytes` that are
+  not null.
+- With two App agents waiting, `herdr-app do hakoniwa.approve-all` opens the list with both; after "Approve 2" both rows
+  say "Approved" and both agents work again.
+- With the Herdr window not in front, an agent that turns blocked makes the system show a notification.
 - Clicking a person opens the 480 px right column with that agent's conversation; a blocked agent shows the orange card with
   承認 / 却下, and pressing one changes the agent's state.
 - Starting an agent with the band's エージェント button opens a tab in the chosen space running that CLI, and the person

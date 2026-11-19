@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+const m = await import(new URL("../hakoniwa/mods/hakoniwa", import.meta.url).pathname + "/notify-rules.js");
+const S = m.notifySettings;
+assert.deepEqual(S(null), { enabled: true, on: ["blocked", "done"], when: "away" });
+assert.deepEqual(S({ office: { notify: { enabled: false, on: ["done", "x", "done"], when: "always" } } }), { enabled: false, on: ["done"], when: "always" });
+assert.deepEqual(S({ office: { notify: [] } }).on, ["blocked", "done"]);
+const add = [{ id: "a", name: "Claude", from: "working", to: "done", msg: "" }, { id: "b", name: "Codex\u0007\n x", from: "working", to: "blocked", msg: "approve Bash: <b>rm</b> & co" }, { id: "c", name: "Z", from: "idle", to: "working" }];
+assert.deepEqual(m.notifyPlan(add, S(null), true), []);                       // window in front: Herdr's own toast
+const p = m.notifyPlan(add, S(null), false, (id) => (id === "a" ? "Web" : ""));
+assert.equal(p.length, 2); assert.equal(p[0].kind, "blocked"); assert.equal(p[0].title, "Codex x needs your answer"); assert.equal(p[0].body, "approve Bash: <b>rm</b> & co");
+assert.deepEqual(p[1], { kind: "done", title: "Claude has a report", body: "Finished in Web" });
+assert.equal(m.notifyPlan(add, S({ office: { notify: { when: "always" } } }), true).length, 2);
+assert.deepEqual(m.notifyPlan(add, S({ office: { notify: { on: ["done"] } } }), false).map((x) => x.kind), ["done"]);
+assert.deepEqual(m.notifyPlan(add, S({ office: { notify: { enabled: false } } }), false), []);
+const many = [1, 2, 3, 4, 5].map((i) => ({ id: `i${i}`, name: `A${i}`, to: i < 3 ? "blocked" : "done" }));
+assert.deepEqual(m.notifyPlan(many, S(null), false), [{ kind: "blocked", title: "Hakoniwa: 2 need your answer, 3 have reports", body: "A1, A2, A3, A4, A5" }]);
+const l = m.notifyArgv("linux", p[0], { icon: "/i.png" });
+assert.equal(l.cmd, "notify-send"); assert.deepEqual(l.args.slice(-3), ["--", "Codex x needs your answer", "approve Bash: &lt;b&gt;rm&lt;/b&gt; &amp; co"]); assert.ok(l.args.includes("--urgency=normal") && !l.args.includes("--urgency=critical"));
+const mac = m.notifyArgv("macos", { title: "--help me", body: "-x", kind: "done" });
+assert.deepEqual(mac.args.slice(-2), ["help me", "x"]);
+assert.equal(m.notifyArgv("windows", p[0], {}), null); assert.equal(m.notifyArgv("windows", p[0], { ps1: "C:/n.ps1" }).args.at(-1), p[0].body); assert.equal(m.notifyArgv("plan9", p[0]), null);
+assert.equal([...m.notifyText("x".repeat(500))].length, 160);
+console.log("notify ok");

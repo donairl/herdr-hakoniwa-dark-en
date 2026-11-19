@@ -13,7 +13,8 @@ Sources (all read-only; nothing is started, answered or changed):
                            Enterprise policy allowManagedHooksOnly)
 Prompt and transcript text is never copied out: only the model name is read.
 
-Output: %LOCALAPPDATA%/hakoniwa/state.json (atomic), and stdout with --stdout.
+Output: state.json (atomic) in %LOCALAPPDATA%/hakoniwa (Windows), ~/Library/Application Support/hakoniwa (macOS)
+or $XDG_STATE_HOME/hakoniwa (Linux, default ~/.local/state/hakoniwa), and stdout with --stdout.
 Run once per call; the Herdr HUD mod calls it every few seconds.
 """
 import argparse
@@ -32,8 +33,48 @@ import urllib.parse
 import urllib.request
 
 HOME = Path.home()
-LOCAL = Path(os.environ.get('LOCALAPPDATA') or HOME / 'AppData' / 'Local')
-OUT_DIR = LOCAL / 'hakoniwa'
+LEGACY_OUT_DIR = HOME / 'AppData' / 'Local' / 'hakoniwa'   # where every platform wrote before (the Windows path, made up under $HOME elsewhere)
+
+
+def default_out_dir(env=None, home=None, platform=None, name=None):
+    """Where state.json lives when --out is not given.
+
+    Windows: %LOCALAPPDATA%/hakoniwa. macOS: ~/Library/Application Support/hakoniwa.
+    Linux and the rest: $XDG_STATE_HOME/hakoniwa (default ~/.local/state/hakoniwa).
+    """
+    env = os.environ if env is None else env
+    home = HOME if home is None else Path(home)
+    platform = sys.platform if platform is None else platform
+    name = os.name if name is None else name
+    if name == 'nt':
+        return Path(env.get('LOCALAPPDATA') or home / 'AppData' / 'Local') / 'hakoniwa'
+    if platform == 'darwin':
+        return home / 'Library' / 'Application Support' / 'hakoniwa'
+    xdg = env.get('XDG_STATE_HOME') or ''
+    return (Path(xdg) if os.path.isabs(xdg) else home / '.local' / 'state') / 'hakoniwa'   # the spec: a relative XDG path is ignored
+
+
+def adopt_legacy_dir(new_dir, old_dir):
+    """Linux / macOS: an earlier version wrote to ~/AppData/Local/hakoniwa. Move that folder to the new place once
+    (the cache keeps who sat where and the weather's place), and drop the empty ~/AppData it leaves behind.
+    Returns True when it moved. Never raises: with two runs at once, the loser simply finds nothing to move."""
+    new_dir, old_dir = Path(new_dir), Path(old_dir)
+    try:
+        if new_dir == old_dir or new_dir.exists() or not old_dir.is_dir():
+            return False
+        new_dir.parent.mkdir(parents=True, exist_ok=True)
+        os.rename(old_dir, new_dir)
+    except OSError:
+        return False
+    for empty in (old_dir.parent, old_dir.parent.parent):   # ~/AppData/Local, ~/AppData: only when nothing else is in them
+        try:
+            empty.rmdir()
+        except OSError:
+            break
+    return True
+
+
+OUT_DIR = default_out_dir()
 T3_DB = HOME / '.t3' / 'userdata' / 'statev2.sqlite'
 SESSIONS = HOME / '.claude' / 'sessions'
 PROJECTS = HOME / '.claude' / 'projects'
@@ -63,7 +104,7 @@ def herdr_cli():
     found = shutil.which('herdr')
     if found:
         return found
-    fallback = HOME / '.herdr' / 'packages' / 'standalone' / 'current' / 'herdr.exe'
+    fallback = HOME / '.herdr' / 'packages' / 'standalone' / 'current' / ('herdr.exe' if os.name == 'nt' else 'herdr')
     return str(fallback) if fallback.is_file() else None
 
 
@@ -83,10 +124,115 @@ def run_json(argv, timeout=8):
 
 # ---------------------------------------------------------------- processes
 
-def process_table():
-    """{pid: (parent pid, exe name)} from a Toolhelp snapshot (no WMI)."""
-    if os.name != 'nt':
+_NODE_LIKE = ('node', 'bun', 'deno')
+
+
+_SCRIPT_DIRS = (('/claude-code/', 'claude'), ('/@openai/codex/', 'codex'), ('/opencode-ai/', 'opencode'))
+
+
+def _script_name(argv):
+    """A CLI run by node / bun shows as "node": its script tells which one it is ("…/@anthropic-ai/claude-code/cli.js" -> "claude").
+    Only the script itself is looked at (the first word that is not an option), never a path that merely has the name in it."""
+    for arg in argv[1:4]:
+        if arg.startswith('-'):
+            continue
+        low = arg.replace('\\', '/').lower()
+        stem = low.rsplit('/', 1)[-1].rsplit('.', 1)[0]
+        if stem in ('claude', 'codex', 'opencode', 'cursor-agent', 'herdr'):
+            return stem
+        return next((name for part, name in _SCRIPT_DIRS if part in low), None)
+    return None
+
+
+def parse_proc_stat(text):
+    """(parent pid, name) from /proc/<pid>/stat. The name is in brackets and may hold spaces and brackets itself."""
+    open_at, close_at = text.find('('), text.rfind(')')
+    if open_at < 0 or close_at < open_at:
+        return None
+    rest = text[close_at + 1:].split()
+    try:
+        return int(rest[1]), text[open_at + 1:close_at]
+    except (IndexError, ValueError):
+        return None
+
+
+def proc_table(root='/proc'):
+    """Linux: {pid: (parent pid, name)} read from /proc (nothing is started)."""
+    table = {}
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return table
+    for entry in names:
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f'{root}/{entry}/stat', encoding='utf-8', errors='replace') as handle:
+                parsed = parse_proc_stat(handle.read())
+            if not parsed:
+                continue
+            parent, name = parsed
+            name = name.lower()
+            if name.split('-')[0] in _NODE_LIKE:     # "node", "node-MainThread"
+                with open(f'{root}/{entry}/cmdline', 'rb') as handle:
+                    argv = [a.decode('utf-8', 'replace') for a in handle.read().split(b'\0') if a]
+                name = _script_name(argv) or name
+            table[int(entry)] = (parent, name)
+        except (OSError, ValueError):
+            continue    # the process ended while it was read
+    return table
+
+
+def parse_ps(text):
+    """{pid: (parent pid, name, rss bytes)} from `ps -axo pid=,ppid=,rss=,comm=` (macOS / BSD: comm is the whole path)."""
+    rows = {}
+    for line in text.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) < 4:
+            continue
+        try:
+            pid, parent, rss = int(parts[0]), int(parts[1]), int(parts[2])
+        except ValueError:
+            continue
+        rows[pid] = (parent, parts[3].strip().rsplit('/', 1)[-1].lower(), rss * 1024)
+    return rows
+
+
+_PS_RSS = {}    # macOS / BSD: the sizes of the one `ps` run that made the table (pid -> bytes)
+
+
+def ps_table():
+    """macOS / BSD: one `ps` run gives the table and the sizes."""
+    try:
+        result = subprocess.run(['ps', '-axo', 'pid=,ppid=,rss=,comm='], capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
         return {}
+    rows = parse_ps(result.stdout.decode('utf-8', 'replace'))
+    _PS_RSS.clear()
+    _PS_RSS.update({pid: row[2] for pid, row in rows.items()})
+    return {pid: (row[0], row[1]) for pid, row in rows.items()}
+
+
+def proc_rss(pid, root='/proc'):
+    """Linux: resident memory of one process in bytes (None when it is gone)."""
+    try:
+        with open(f'{root}/{int(pid)}/statm', encoding='ascii') as handle:
+            return int(handle.read().split()[1]) * os.sysconf('SC_PAGE_SIZE')
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def posix_memory_reader():
+    """pid -> bytes off Windows: /proc on Linux, the last `ps` run elsewhere."""
+    if sys.platform.startswith('linux'):
+        return proc_rss
+    return lambda pid: _PS_RSS.get(int(pid)) if pid is not None else None
+
+
+def process_table():
+    """{pid: (parent pid, exe name)}: a Toolhelp snapshot on Windows (no WMI), /proc on Linux, one `ps` run elsewhere."""
+    if os.name != 'nt':
+        return proc_table() if sys.platform.startswith('linux') else ps_table()
     import ctypes
     from ctypes import wintypes
 
@@ -609,7 +755,7 @@ _PQLI = 0x1000                    # PROCESS_QUERY_LIMITED_INFORMATION
 def working_sets():
     """pid -> working set (bytes) reader. psapi through ctypes; nothing is started (no WMI, no processes)."""
     if os.name != 'nt':
-        return lambda pid: None
+        return posix_memory_reader()
     import ctypes
     from ctypes import wintypes
 
@@ -643,7 +789,7 @@ def working_sets():
 def private_bytes_reader():
     """pid -> private bytes (PagefileUsage, the task manager's "commit size"). psapi through ctypes; nothing is started."""
     if os.name != 'nt':
-        return lambda pid: None
+        return posix_memory_reader()
     import ctypes
     from ctypes import wintypes
 
@@ -1520,6 +1666,8 @@ def main(argv=None):
     parser.add_argument('--where', action='store_true',
                         help='★108: print where state.json is written, this Python and whether numpy / Pillow are there (the mod asks when it has no config.json), and exit')
     ns = parser.parse_args(argv)
+    if os.name != 'nt' and ns.out == OUT_DIR / 'state.json':
+        adopt_legacy_dir(OUT_DIR, LEGACY_OUT_DIR)
     if ns.where:
         import importlib.util
         found = {name: importlib.util.find_spec(name) is not None for name in ('numpy', 'PIL')}
