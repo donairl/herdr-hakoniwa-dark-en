@@ -3,10 +3,10 @@
 // "立てる" calls the App's commands through launchAgent (actions.js): tab.new, or space.new for a new space. Nothing is started before that button.
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
-import { appHome, closeOverlay, exec, hc, openOverlay, props, readTextFile, run, setShared, shared, spaces, writeTextFile } from "herdr";
+import { appHome, closeOverlay, exec, hc, openOverlay, pickFolder, props, readTextFile, run, setShared, shared, spaces, writeTextFile } from "herdr";
 import { P } from "./common.js";
 import { icon } from "./icons.js";
-import { AGENT_KINDS, FREE_NAME, FREE_SPACE, NEW_SPACE, cleanChoice, cleanDefaults, defaultSpace, effortsFor, launchAgent, normalizeOptions } from "./actions.js";
+import { AGENT_KINDS, FREE_NAME, FREE_SPACE, NEW_SPACE, cleanChoice, cleanDefaults, defaultSpace, effortsFor, launchAgent, normFolder, normalizeOptions } from "./actions.js";
 import { paint } from "./palette.js"; // light -> dark UI colours (follows the appearance)
 import { saveText } from "./save-text.js";
 import { cleanPresets, presetName, addPreset, removePreset, presetsText } from "./preset-rules.js";
@@ -168,6 +168,18 @@ export class LaunchPart {
     const kindName = KINDS6.find((k) => k.key === f.kind)?.label ?? f.kind;
     const summary = term ? `Add a terminal to ${spaceName}` : `Add to ${spaceName} · ${kindName}${shell ? "" : ` / ${models.find((m) => m.id === f.model)?.label ?? "Default"}${efforts.length ? ` / ${f.effort || "Default"}` : ""}`}`;
     const close = (cx) => { closeOverlay(p.overlay); };
+    // "Browse": the system folder picker; the chosen folder fills the Folder input (still editable), a cancel leaves it as it is.
+    // The picker cannot be told where to open (herdr's pickFolder takes only the button text), so it opens where the system decides.
+    const browseFolder = (cx) => {
+      if (f.picking) return;
+      f.picking = true; cx.notify();
+      cx.spawn(async (cx2) => {
+        let d = null; try { d = await pickFolder({ prompt: "Choose" }); } catch {}
+        f.picking = false;
+        if (d) { try { this.fFolder.set_value(normFolder(d)); } catch {} f.error = null; }
+        cx2.notify();
+      });
+    };
     // Presets: a press fills the window with what was saved (nothing starts before "Start agent"); "+ Save current" keeps what the window shows now.
     const savePresets = (next, cx) => { f.presets = next; cx.spawn(async (cx2) => { try { await saveText({ read: readTextFile, write: writeTextFile }, `${appHome()}/hakoniwa-office/presets.json`, presetsText(next)); } catch { f.error = "Could not save the presets"; cx2.notify(); } }); };
     const usePreset = (q, cx) => {
@@ -229,7 +241,12 @@ export class LaunchPart {
         .when(usedLast, (el) => el.child(div().id("launch-last").text_size(11).text_color(P.muted).child("Using your last settings")))
         .child(fold("adv-toggle", "Advanced", f.adv, () => { f.adv = !f.adv; }))
         .when(f.adv, (el) => el.child(v_flex().id("launch-adv").gap(10).pl(14)
-          .child(v_flex().gap(5).child(label("Folder")).child(Input.new(this.fFolder)))
+          .child(v_flex().gap(5).child(label("Folder")).child(h_flex().gap(8).items_center()
+            .child(div().flex_1().min_w(0).child(Input.new(this.fFolder)))
+            .child(h_flex().id("launch-browse").flex_none().h(32).px(12).gap(6).items_center().rounded(8).border(1).border_color(P.line).bg(P.white)
+              .text_size(12).font_weight(700).text_color(f.picking ? P.muted : P.ink).cursor_pointer().hover((s) => s.bg(paint("#f3efe4")))
+              .tooltip("Choose a folder").on_click((_e, cx) => browseFolder(cx))
+              .child(icon("folder", 14, f.picking ? P.muted : P.ink)).child(f.picking ? "Choosing…" : "Browse"))))
           .child(v_flex().gap(5).child(label("Display name")).child(Input.new(this.fName)))
           .when(!term && !shell, (e2) => e2.child(v_flex().gap(5).child(label("Leader or worker"))
             .child(h_flex().gap(6).flex_wrap().children([chip("pm-parent", "Leader (starts on its own)", !child, () => { f.parentMode = "parent"; }),
