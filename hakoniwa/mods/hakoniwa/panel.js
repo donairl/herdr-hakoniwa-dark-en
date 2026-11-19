@@ -3,6 +3,7 @@
 // so a terminal can be typed in before any agent runs in it. Folded, it is a thin strip. Mixed into AgentHud.
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
+import { saveText } from "./save-text.js";
 import { appHome, closeOverlay, exec, hc, openOverlay, panes, props, readTextFile, run, shared, spaces, writeTextFile } from "herdr";
 import { normFolder, moveToFreePlan, moveByLabelPlan, isWorker, teamMembers, teamPlan, teamSpaceState, teamFixPlan, AGENT_KINDS, FREE_NAME, FREE_SPACE, SHELL_KIND } from "./actions.js";
 import { P, STATE, dot, platformIcon, answeredView } from "./common.js";
@@ -261,7 +262,7 @@ export class PanelPart {
     let raw = null; try { raw = JSON.parse(String(await readTextFile(`${appHome()}/hakoniwa-office/widths.json`) ?? "")); } catch {}
     const w = cleanWidths(raw, this.left?.width ?? 1600); this.leftW = w.left; this.rightW = w.right; cx.notify();
   }
-  saveWidths() { try { writeTextFile(`${appHome()}/hakoniwa-office/widths.json`, JSON.stringify({ left: this.leftW ?? LEFT_W.def, right: this.rightW ?? null })); } catch {} }
+  saveWidths() { saveText({ read: readTextFile, write: writeTextFile }, `${appHome()}/hakoniwa-office/widths.json`, JSON.stringify({ left: this.leftW ?? LEFT_W.def, right: this.rightW ?? null })).catch(() => {}); } // (the widths were saved once and never again: the file was there)
   // The drag of a border (left list / right window): from the floor's and the handle's mouse events (no drawing here, only the redraw call).
   resizeStart(side, x) { this.resize = { side, x0: x, w0: side === "left" ? (this.leftW ?? PANEL_W) : (this.rightW ?? this.termBox?.w ?? Math.round((this.left?.width ?? 1600) * 0.3)) }; }
   resizeMove(x, cx) {

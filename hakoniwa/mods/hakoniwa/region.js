@@ -2,6 +2,7 @@
 // Off (default) or any failure: the old window (chat.js syncTerm) runs. Mixed into AgentHud.
 import { div } from "gpui-kit";
 import { v_flex } from "gpui-base";
+import { saveText } from "./save-text.js";
 import { appHome, focused, props, readTextFile, run, setShared, shared, writeTextFile } from "herdr";
 import { P } from "./common.js";
 import { tabFor } from "./detail.js";
@@ -59,7 +60,7 @@ export class RegionPart {
   // Anything refused by the App: back to the old window at once, and the switch is written off.
   regionFail(e, cx) {
     this.regionBroken = true; this.termFail = String(e?.message ?? e); this.regionKey = null; this.regionShown = false;
-    cx.spawn(async () => { try { await run("layout.hide", { id: REGION.id }); } catch {} try { await writeTextFile(FILE(), JSON.stringify({ on: false, failed: this.termFail })); } catch {} });
+    cx.spawn(async () => { try { await run("layout.hide", { id: REGION.id }); } catch {} try { await saveText({ read: readTextFile, write: writeTextFile }, FILE(), JSON.stringify({ on: false, failed: this.termFail })); } catch {} });
   }
   // The right border's drag in region mode: the region is resized live (no ghost line).
   regionResize(w) { try { run("layout.resize", { id: REGION.id, px: w }); } catch {} }

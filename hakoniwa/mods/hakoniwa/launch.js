@@ -8,6 +8,7 @@ import { P } from "./common.js";
 import { icon } from "./icons.js";
 import { AGENT_KINDS, FREE_NAME, FREE_SPACE, NEW_SPACE, cleanChoice, cleanDefaults, defaultSpace, effortsFor, launchAgent, normalizeOptions } from "./actions.js";
 import { paint } from "./palette.js"; // light -> dark UI colours (follows the appearance)
+import { saveText } from "./save-text.js";
 
 // ★107 the six tiles: the five agent kinds and a plain shell
 const KINDS6 = [...AGENT_KINDS, { key: "shell", label: "Shell" }];
@@ -171,10 +172,10 @@ export class LaunchPart {
       f.busy = true; cx.notify();
       if (f.space === NEW_SPACE && !term) setShared("hakoniwa.newroom", { before: list.map((s) => s.id), at: Date.now() }); // ★85-2: the office names this room after its first agent's title
       cx.spawn(async (cx) => {
-        const r = await launchAgent(run, form, list, hc, writeTextFile);
+        const r = await launchAgent(run, form, list, hc, (path, text) => saveText({ read: readTextFile, write: writeTextFile }, path, text)); // the --settings file is there from the first start on: saved over what it holds (save-text.js), never "as a new file"
         f.busy = false;
         if (r.ok) { // the last choice is the next default (★107: per provider; a shell is not remembered as the last provider)
-          if (!term && !shell) { try { await writeTextFile(`${appHome()}/hakoniwa-office/launch.json`, JSON.stringify({ kind: f.kind, model: f.model, effort: f.effort, parentMode: f.parentMode, byKind: { ...(f.mem ?? {}), [f.kind]: { model: f.model, effort: f.effort } } })); } catch {} }
+          if (!term && !shell) { try { await saveText({ read: readTextFile, write: writeTextFile }, `${appHome()}/hakoniwa-office/launch.json`, JSON.stringify({ kind: f.kind, model: f.model, effort: f.effort, parentMode: f.parentMode, byKind: { ...(f.mem ?? {}), [f.kind]: { model: f.model, effort: f.effort } } })); } catch {} }
           closeOverlay(p.overlay); return;
         }
         f.error = r.error; cx.notify();
