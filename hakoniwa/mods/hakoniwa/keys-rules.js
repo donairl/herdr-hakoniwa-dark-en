@@ -4,7 +4,7 @@ import { approvalPlan, answerApproval, stripApprovalDialog, inboxWhat, reportNam
 import { approvalDetailLines } from "./approve-view.js";
 
 // What a key can ask for. `inbox` and `close` were there already (room.js / main.js); the rest is keys.js.
-export const KEY_COMMANDS = ["next", "prev", "attention", "approve", "reject", "approve-all", "tab"];
+export const KEY_COMMANDS = ["next", "prev", "attention", "approve", "reject", "approve-all", "tab", "broadcast"];
 
 // The person after (dir 1) / before (dir -1) the chosen one, in the list's own order, going round. Nobody chosen: the first / the last.
 export function navStep(list, selId, dir = 1) {

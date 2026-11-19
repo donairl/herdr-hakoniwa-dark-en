@@ -9,6 +9,7 @@ import { icon } from "./icons.js";
 import { AGENT_KINDS, FREE_NAME, FREE_SPACE, NEW_SPACE, cleanChoice, cleanDefaults, defaultSpace, effortsFor, launchAgent, normalizeOptions } from "./actions.js";
 import { paint } from "./palette.js"; // light -> dark UI colours (follows the appearance)
 import { saveText } from "./save-text.js";
+import { cleanPresets, presetName, addPreset, removePreset, presetsText } from "./preset-rules.js";
 
 // ★107 the six tiles: the five agent kinds and a plain shell
 const KINDS6 = [...AGENT_KINDS, { key: "shell", label: "Shell" }];
@@ -27,6 +28,7 @@ const FIXED_H = 159;
 export function launchHeight(o) {
   const items = [];
   items.push(o.child ? 14 : 58 + (o.free ? 23 : 0) + (o.newSpace && !o.term ? 23 : 0)); // 部屋 (label + dropdown, and its note)
+  if (!o.term) items.push(54); // Presets: label 19 + 5 + one row of chips 30 (more rows than one: the middle scrolls)
   if (!o.term) items.push(140); // プロバイダ: label + two rows of tiles
   if (o.models) items.push(61); // モデル (label row has the 一覧を更新 chip)
   if (o.efforts) items.push(58); // 推論の強さ
@@ -96,7 +98,7 @@ export class LaunchPart {
     const p = props() ?? {};
     // open: which dropdown is unfolded (project / model / effort); adv / taskOpen: the folded parts; mem: what was chosen last, per provider
     this.form = { space: p.space ?? NEW_SPACE, kind: p.mode === "terminal" ? "shell" : "claude", error: null, busy: false, parentMode: "parent", parent: p.parent ?? "", model: "", effort: "", options: null, refreshing: false,
-      open: null, adv: false, taskOpen: false, mem: {} };
+      open: null, adv: false, taskOpen: false, mem: {}, presets: [], preset: null, note: null };
     if (p.mode !== "terminal") cx.spawn(async (cx) => { await this.loadLaunchOptions(cx); });
     this.fNew = InputState.new({ placeholder: "New space name (project name)" });
     this.fFolder = InputState.new({ placeholder: "Folder (empty = the room's folder)", value: p.folder ?? "" });
@@ -118,6 +120,7 @@ export class LaunchPart {
     f.mem = { ...(last?.byKind && typeof last.byKind === "object" ? last.byKind : {}) };
     if (!f.mem[d.kind] && (d.model || d.effort)) f.mem[d.kind] = { model: d.model, effort: d.effort }; // a launch.json from before ★107 has only the last one
     Object.assign(f, { kind: d.kind, parentMode: d.parentMode }, cleanChoice(f.options, d.kind, f.mem[d.kind]?.model ?? d.model, f.mem[d.kind]?.effort ?? d.effort));
+    f.presets = cleanPresets(await rd("presets.json")); // the saved presets (preset-rules.js)
     cx.notify(); this.rememberRows();
     if (stale) {
       await this.refreshModels(cx, true); const fresh = await rd("models.json");
@@ -141,7 +144,7 @@ export class LaunchPart {
     const label = (t) => div().text_size(12).font_weight(700).text_color(P.muted).child(t);
     const { term, free, shell, child, models, efforts, parents, mem, usedLast } = this.launchDerived(p, f); // ★68-2 / ★95
     const tog = (name) => (_e, cx) => { f.open = f.open === name ? null : name; cx.notify(); };
-    const pick = (k) => { f.kind = k; f.open = null; const r = f.mem?.[k]; Object.assign(f, cleanChoice(f.options, k, r?.model ?? "", r?.effort ?? "")); }; // a kind change: that kind's own last choice, only what it still has
+    const pick = (k) => { f.kind = k; f.open = null; f.preset = null; const r = f.mem?.[k]; Object.assign(f, cleanChoice(f.options, k, r?.model ?? "", r?.effort ?? "")); }; // a kind change: that kind's own last choice, only what it still has
     const chip = (id, text, on, fn) => div().id(id).flex_none().px(10).py(5).rounded(8).border(1).border_color(on ? P.blue : P.line).bg(on ? paint("#e8f0fe") : P.white)
       .text_size(12).font_weight(on ? 700 : 400).text_color(on ? P.blue : P.ink).cursor_pointer().hover((s) => s.bg(paint("#f3efe4"))).on_click((_e, cx) => { fn(); cx.notify(); this.rememberRows(); }).child(text);
     // a dropdown: the trigger shows the chosen value; the list unfolds under it (in the flow, so it scrolls with the middle). `items`: [{ id, text, on, fn }]
@@ -165,6 +168,28 @@ export class LaunchPart {
     const kindName = KINDS6.find((k) => k.key === f.kind)?.label ?? f.kind;
     const summary = term ? `Add a terminal to ${spaceName}` : `Add to ${spaceName} · ${kindName}${shell ? "" : ` / ${models.find((m) => m.id === f.model)?.label ?? "Default"}${efforts.length ? ` / ${f.effort || "Default"}` : ""}`}`;
     const close = (cx) => { closeOverlay(p.overlay); };
+    // Presets: a press fills the window with what was saved (nothing starts before "Start agent"); "+ Save current" keeps what the window shows now.
+    const savePresets = (next, cx) => { f.presets = next; cx.spawn(async (cx2) => { try { await saveText({ read: readTextFile, write: writeTextFile }, `${appHome()}/hakoniwa-office/presets.json`, presetsText(next)); } catch { f.error = "Could not save the presets"; cx2.notify(); } }); };
+    const usePreset = (q, cx) => {
+      pick(q.kind); Object.assign(f, cleanChoice(f.options, q.kind, q.model, q.effort));
+      try { if (q.folder) this.fFolder.set_value(q.folder); this.fTask.set_value(q.task ?? ""); } catch {}
+      f.taskOpen = !!q.task; f.preset = q.name; f.note = null; f.error = null; cx.notify(); this.rememberRows();
+    };
+    const keepPreset = (cx) => {
+      const cur = { kind: f.kind, model: f.model, effort: f.effort, folder: String(this.fFolder?.value?.() ?? ""), task: String(this.fTask?.value?.() ?? ""), name: String(this.fName?.value?.() ?? "") };
+      const name = presetName(cur, kindName, f.model ? (models.find((m) => m.id === f.model)?.label ?? "") : "");
+      if (!name) return;
+      savePresets(addPreset(f.presets, { ...cur, name }), cx); f.preset = name; f.note = `Saved preset "${name}"`; f.error = null; cx.notify();
+    };
+    const presetRow = () => v_flex().gap(5).child(label("Presets")).child(h_flex().id("launch-presets").gap(6).flex_wrap().items_center()
+      .children((f.presets ?? []).filter((q) => KINDS6.some((k) => k.key === q.kind && k.key !== "shell")).map((q, i) => { const on = f.preset === q.name;
+        return h_flex().id(`preset-${i}`).flex_none().h(30).pl(10).pr(4).gap(4).items_center().rounded(8).border(1).border_color(on ? P.blue : P.line).bg(on ? paint("#e8f0fe") : P.white)
+          .cursor_pointer().hover((s2) => s2.bg(paint("#f3efe4"))).on_click((_e, cx) => usePreset(q, cx)).tooltip([q.kind, q.model, q.effort, q.folder, q.task].filter(Boolean).join(" · "))
+          .child(icon(`p-${q.kind}`, 14, on ? P.blue : P.muted)).child(div().max_w(170).truncate().text_size(12).font_weight(on ? 700 : 500).text_color(on ? P.blue : P.ink).child(q.name))
+          .child(div().id(`preset-del-${i}`).flex_none().w(20).h(20).flex().items_center().justify_center().rounded(5).hover((s2) => s2.bg(paint("#fdecea"))).tooltip("Delete this preset")
+            .on_click((_e, cx) => { cx.stop_propagation(); savePresets(removePreset(f.presets, q.name), cx); if (f.preset === q.name) f.preset = null; f.note = `Deleted preset "${q.name}"`; cx.notify(); }).child(icon("x", 12, P.muted))); }))
+      .child(div().id("preset-save").flex_none().h(30).px(10).flex().items_center().rounded(8).border(1).border_color(P.line).bg(P.white).text_size(12).text_color(shell ? P.muted : P.blue)
+        .when(!shell, (e2) => e2.cursor_pointer().hover((s2) => s2.bg(paint("#f3efe4"))).on_click((_e, cx) => keepPreset(cx))).tooltip("Keeps the provider, model, effort, folder and first instruction shown now").child("+ Save current")));
     const submit = (_e, cx) => {
       if (f.busy) return;
       const form = { space: f.space, newName: "", kind: f.kind, name: this.fName.value(), folder: this.fFolder.value(), task: this.fTask.value(),
@@ -189,6 +214,7 @@ export class LaunchPart {
         .child(child ? div().text_size(11).text_color(P.muted).child("The room is the same as the leader's") : v_flex().gap(5).child(label("Project (room)")).child(dropdown("project", spaceName, projectItems))
           .when(free, (el) => el.child(div().text_size(11).text_color(P.muted).child(term ? "Opens in a tab of the \"Free\" space" : "Starts in the \"Free\" space (created if missing) and sits at the free desk")))
           .when(f.space === NEW_SPACE && !term, (el) => el.child(div().text_size(11).text_color(P.muted).child("Starting creates a new room (named after the first agent's title)"))))
+        .when(!term, (el) => el.child(presetRow()))
         .when(!term, (el) => el.child(v_flex().gap(5).child(label("Provider"))
           .child(h_flex().gap(8).flex_wrap().children(KINDS6.map((k) => v_flex().id(`kind-${k.key}`).w(150).h(54).flex_none().gap(4).items_center().justify_center().rounded(10).border(f.kind === k.key ? 2 : 1)
             .border_color(f.kind === k.key ? P.blue : P.line).bg(f.kind === k.key ? paint("#e8f0fe") : P.white).text_size(13).font_weight(f.kind === k.key ? 700 : 500).text_color(f.kind === k.key ? P.blue : P.ink)
@@ -212,7 +238,7 @@ export class LaunchPart {
         .when(!term && !shell, (el) => el.child(fold("task-toggle", "First instruction (optional)", f.taskOpen, () => { f.taskOpen = !f.taskOpen; }))
           .when(f.taskOpen, (e2) => e2.child(Input.new(this.fTask))))))
       // 18th F1 (office-fix18a): the error shares the summary's one line (an always-there 16-high error row + 12 gap was a 28 px empty band under the last row)
-      .child(div().id("launch-summary").flex_none().text_size(11).text_color(f.error ? paint("#d6455d") : P.muted).child(f.error ?? summary))
+      .child(div().id("launch-summary").flex_none().text_size(11).text_color(f.error ? paint("#d6455d") : P.muted).child(f.error ?? f.note ?? summary))
       .child(h_flex().flex_none().gap(10).justify_end()
         .child(div().id("launch-cancel").flex_none().px(16).py(8).rounded(8).border(1).border_color(P.line).bg(P.white).text_size(13).font_weight(700).text_color(P.ink)
           .cursor_pointer().on_click(() => close()).child("Cancel"))

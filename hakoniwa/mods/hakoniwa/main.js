@@ -51,6 +51,7 @@ class AgentHud extends View {
     if (role === "chat" || role === "chat-body" || role === "chat-input" || role === "chat-approve") return this.initChat(cx);
     if (role === "agent-menu") return;
     if (role === "tui-prompt") return this.initTuiPrompt(cx); // ★74-3 (panel.js)
+    if (role === "broadcast") return this.initBroadcast(cx); // one instruction to several agents (keys.js)
     cx.timer.every(REFRESH_MS, (cx) => this.refresh(cx));
     if (role !== "band") cx.timer.every(30000, (cx) => cx.notify());
     // "hakoniwa.chat-next" (keys.json or herdr-app do): the conversation of whoever needs you first.
@@ -252,6 +253,7 @@ class AgentHud extends View {
     if (role === "usage") return this.usageView();
     if (role === "state-list") return this.stateListView(); // ★103-2 (2nd)
     if (role === "feed") return this.feedView(cx); // ★106 recent moves (feed.js)
+    if (role === "broadcast") return this.broadcastView(cx); // (keys.js)
     if (role === "approve-all") return this.approveAllView(cx); // the list before several requests are approved at once (keys.js)
     this.syncMode(cx);
     const list = this.items();

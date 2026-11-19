@@ -62,6 +62,18 @@ Top to bottom (layout `hakoniwa`, theme `paper`, UI font Geist 13, window backgr
   line (the whole dialog in the tooltip). A chip per kind of request ("Bash command 3") and a click on a row switch them
   off; "Approve N" presses the "yes" number of each chosen agent, side by side, and every row then says "Approved" or why
   not. An agent is pressed only if its screen still shows the same dialog text that was listed.
+- **Search** (the left list's box): the typed words are split at spaces and every one must be a substring of the row's
+  name, room, folder (`cwd`), CLI, model, or state words (blocked: "blocked waiting approval"; done: "done report
+  finished"; working: "working busy running"; idle).
+- **Message several agents** (`alt-b` / `hakoniwa.broadcast`, or "Message several…" under the left list): a dialog (560 px)
+  listing every App agent with a tick box, an "Everybody" chip and a chip per room, one text input, "Send to N". The left
+  list's search hits are ticked when it opens from there. Blocked agents are listed greyed and cannot be ticked. On send,
+  each chosen agent's screen is read first; if it shows a numbered question the agent is skipped ("Waits for an answer:
+  not sent"), else `hc send <address> <text>` (line breaks become spaces). Each row then says "Sent" or why not.
+- **Launch presets**: the "New agent" window has a "Presets" row above the providers. "+ Save current" stores
+  { name, kind, model, effort, folder, task } in `hakoniwa-office/presets.json` (at most 12; the same name replaces; the
+  name is the display name, else "<provider> · <model> · <folder's last part>"). A press on a preset chip fills the
+  window; its "×" deletes it. Nothing is started by either.
 - **Desktop notifications** (`office.notify`, on by default): when an agent turns blocked or done while the Herdr window is
   not the active one, the footer's copy asks the system for a notification (title "<name> needs your answer" / "<name> has
   a report", body the agent's own status line or its room). More than three at one moment become one that counts them.
@@ -89,7 +101,7 @@ Top to bottom (layout `hakoniwa`, theme `paper`, UI font Geist 13, window backgr
   `keys.js` / `keys-rules.js` (the key commands and "Approve requests"), `notify-rules.js` (desktop notifications; sent
   from `feed.js`).
   Windows it opens with `openOverlay`: the chat window (`key: "hakoniwa-chat"`), the inbox (`"hakoniwa-inbox"`), a terminal
-  window (`"hakoniwa-term"`), dialogs `launch`, `confirm`, `room-new`, `tui-prompt`, `approve-all`.
+  window (`"hakoniwa-term"`), dialogs `launch`, `confirm`, `room-new`, `tui-prompt`, `approve-all`, `broadcast`.
 - **herdr functions**: `agents()`, `spaces()`, `panes()`, `focused()`, `settings()`, `run()`, `exec()`, `hc()` (`ls --json`,
   `get --json`, `read`, `send`, `keys`, `label`), `readTextFile`, `writeTextFile`, `watchFolder`, `shared` / `setShared`
   (keys `hakoniwa.*`: `view`, `demo`, `sel`, `pick`, ...), `nextCommand` (commands `hakoniwa.view`, `hakoniwa.demo`,

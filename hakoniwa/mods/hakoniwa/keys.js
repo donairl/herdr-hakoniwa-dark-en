@@ -5,14 +5,16 @@
 //   approve / reject the chosen person's waiting request (the same press as the card's buttons; nobody chosen: only chooses the first one who waits)
 //   approve-all      a window that lists every request that can be answered from here; nothing is pressed before its button
 //   tab              the right window: Terminal <-> Chat
+//   broadcast        a window to write one instruction to several agents (broadcast-rules.js); nothing is sent before its button
 // What a key did (or why it did nothing) is said in a toast, because the band's copy has no card of its own to say it on.
 import { div } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { closeOverlay, hc, notify, openOverlay, props, setShared, shared } from "herdr";
 import { P, STATE } from "./common.js";
 import { icon } from "./icons.js";
 import { paint } from "./palette.js";
 import { answerApproval, REASON_TEXT, reportName, seenNext } from "./approve.js";
+import { sendTargets, sendRooms, sendChosen, sendText, sendAll, sendHeight, SEND, SEND_REASON } from "./broadcast-rules.js";
 import { KEY_COMMANDS, navStep, attentionStep, answerKeyPlan, bulkTargets, bulkKinds, bulkChosen, approveTargets, bulkHeight, BULK, BULK_REASON } from "./keys-rules.js";
 
 const say = (title, body = "", level = "info") => { try { notify({ title, body, level, timeout: 4000 }); } catch {} };
@@ -34,6 +36,7 @@ export class KeysPart {
     else if (command === "tab") { if (selId != null) setShared("hakoniwa.tab", { id: selId, tab: "toggle", at: Date.now() }); }
     else if (command === "approve" || command === "reject") this.answerKey(command === "reject" ? "no" : "yes", list, selId, cx);
     else if (command === "approve-all") this.openApproveAll(list, cx);
+    else if (command === "broadcast") this.openBroadcast(list);
     return true;
   }
 
@@ -73,6 +76,69 @@ export class KeysPart {
           props: { role: "approve-all", targets, skipped } });
       } finally { this.bulkOpening = false; }
     });
+  }
+
+  // One instruction to several App agents. `ticked`: ids ticked when the window opens (the left list's search hits); none otherwise.
+  openBroadcast(list, ticked = null) {
+    const rows = sendTargets(list ?? this.items());
+    if (!rows.length) return say("No agent to write to", "Only Herdr App agents can be written to from here", "warning");
+    openOverlay({ mod: "hakoniwa", kind: "dialog", modal: true, width: SEND.w, height: sendHeight(rows.length, sendRooms(rows).length),
+      props: { role: "broadcast", rows, ticked: Array.isArray(ticked) ? ticked : [] } });
+  }
+  initBroadcast() {
+    const p = props() ?? {}, rows = Array.isArray(p.rows) ? p.rows : [];
+    this.bcText = InputState.new({ placeholder: "Instruction for the chosen agents" });
+    this.bc = { on: new Set(sendChosen(rows, new Set(p.ticked ?? [])).map((r) => r.id)), running: false, done: false, results: {}, error: null };
+  }
+  // Role "broadcast": who gets it (a switch per room and per agent), the text, and the one button that sends.
+  broadcastView(cx) {
+    const p = props() ?? {}, rows = Array.isArray(p.rows) ? p.rows : [], st = (this.bc ??= { on: new Set(), running: false, done: false, results: {}, error: null });
+    const rooms = sendRooms(rows), chosen = sendChosen(rows, st.on), locked = st.running || st.done, close = () => closeOverlay(p.overlay);
+    const run = () => {
+      if (locked) return;
+      const text = sendText(this.bcText?.value?.());
+      if (!chosen.length || !text) { st.error = !chosen.length ? "Choose at least one agent" : "Type the instruction first"; cx.notify(); return; }
+      st.error = null; st.running = true; cx.notify();
+      cx.spawn(async (cx2) => {
+        try { await sendAll({ hc }, chosen, text, (id, r) => { st.results[id] = r; cx2.notify(); }); }
+        finally { st.running = false; st.done = true; cx2.notify(); }
+      });
+    };
+    const toggle = (ids) => { if (locked) return; const allOn = ids.length > 0 && ids.every((id) => st.on.has(id)); for (const id of ids) { if (allOn) st.on.delete(id); else st.on.add(id); } st.error = null; cx.notify(); };
+    const box = (on, dim) => h_flex().flex_none().w(20).h(20).items_center().justify_center().rounded(5).border(1.5).border_color(on ? P.blue : P.line).bg(on ? P.blue : paint("#ffffff")).when(dim, (e) => e.opacity(0.4)).when(on, (e) => e.child(icon("check", 14, "#ffffff")));
+    const btn = (id, label, fn, fill, dim = false) => div().id(id).flex_none().px(16).py(8).rounded(8).border(1).border_color(fill ? P.blue : P.line).bg(fill ? P.blue : paint("#ffffff"))
+      .text_size(14).font_weight(700).text_color(fill ? "#ffffff" : P.ink).when(dim, (e) => e.opacity(0.45)).when(!dim, (e) => e.cursor_pointer().hover((s) => s.opacity(0.88)).on_click(fn)).child(label);
+    const row = (t) => {
+      const on = t.can && st.on.has(t.id), r = st.results[t.id], pending = st.running && on && !r, sc = STATE[t.status];
+      return h_flex().id(`bc-row-${t.id}`).w_full().flex_none().h(SEND.row - 6).gap(10).px(10).items_center().rounded(10).border(1).border_color(on ? P.blue : P.line).bg(on ? paint("#e8f0fe") : paint("#ffffff"))
+        .when(t.can && !locked, (e) => e.cursor_pointer().on_click(() => toggle([t.id])))
+        .child(box(on, !t.can))
+        .child(div().flex_none().w(10).h(10).rounded(5).bg(sc?.color ?? paint("#b8b2a6")))
+        .child(div().flex_none().max_w(240).truncate().text_size(15).font_weight(700).text_color(t.can ? P.ink : P.muted).child(t.name))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(P.muted).child(t.room))
+        .when(!t.can && !r, (e) => e.child(div().flex_none().text_size(12).text_color(STATE.blocked.color).child("Waits for an answer")))
+        .when(pending, (e) => e.child(div().flex_none().text_size(12).text_color(P.muted).child("Sending…")))
+        .when(!!r, (e) => e.child(div().id(`bc-res-${t.id}`).flex_none().max_w(220).truncate().text_size(12).font_weight(600).text_color(r?.ok ? paint("#2f9e6f") : paint("#d6455d")).child(SEND_REASON[r?.reason] ?? "Not sent")));
+    };
+    const okN = Object.values(st.results).filter((r) => r.ok).length, failN = Object.values(st.results).length - okN, canIds = rows.filter((r) => r.can).map((r) => r.id);
+    const chipEl = (id, label, ids) => { const on = ids.length > 0 && ids.every((x) => st.on.has(x));
+      return h_flex().id(id).flex_none().h(28).px(10).items_center().rounded(8).border(1).border_color(on ? P.blue : P.line).bg(on ? paint("#e3edff") : paint("#ffffff"))
+        .when(!locked, (x) => x.cursor_pointer().on_click(() => toggle(ids))).child(div().max_w(160).truncate().text_size(13).font_weight(600).text_color(on ? P.blue : P.muted).child(label)); };
+    return v_flex().id("bc-root").size_full().p(18).gap(12).bg(P.paper).overflow_hidden()
+      .on_key_down((e, c) => { if (e.key === "escape" && !st.running) { close(); c.stop_propagation(); } else if (e.key === "enter" && !locked) { run(); c.stop_propagation(); } })
+      .child(h_flex().flex_none().gap(8).items_center()
+        .child(div().text_size(17).font_weight(700).text_color(P.ink).child("Message several agents"))
+        .child(div().text_size(14).font_weight(700).text_color(P.muted).child(`${chosen.length} / ${canIds.length}`)))
+      .child(h_flex().id("bc-rooms").flex_none().h(28).gap(6).items_center().overflow_hidden()
+        .child(chipEl("bc-all", "Everybody", canIds))
+        .when(rooms.length > 1, (e) => e.children(rooms.map((k, i) => chipEl(`bc-room-${i}`, `${k.room} ${k.n}`, rows.filter((r) => r.can && r.room === k.room).map((r) => r.id))))))
+      .child(v_flex().id("bc-scroll").flex_1().min_h(0).overflow_y_scrollbar().gap(6).children(rows.map(row)))
+      .when(!!this.bcText, (e) => e.child(div().flex_none().child(Input.new(this.bcText))))
+      .child(h_flex().flex_none().gap(10).items_center()
+        .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(st.error || (st.done && failN) ? paint("#d6455d") : st.done ? paint("#2f9e6f") : P.muted)
+          .child(st.error ?? (st.done ? `${okN} sent${failN ? `, ${failN} not sent` : ""}` : "Never sent to somebody who waits for an answer")))
+        .child(btn("bc-no", st.done ? "Close" : "Cancel", close, false, st.running))
+        .when(!st.done, (e) => e.child(btn("bc-yes", st.running ? "Sending…" : `Send to ${chosen.length}`, run, true, st.running || !chosen.length))));
   }
 
   // Role "approve-all": who asks what, a switch per kind of request and per person, and the one button that approves the chosen ones.

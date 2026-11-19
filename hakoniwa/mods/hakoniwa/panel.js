@@ -4,6 +4,7 @@
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { saveText } from "./save-text.js";
+import { searchTokens, rowHay, hayMatches } from "./search-rules.js";
 import { appHome, closeOverlay, exec, hc, openOverlay, panes, props, readTextFile, run, shared, spaces, writeTextFile } from "herdr";
 import { normFolder, moveToFreePlan, moveByLabelPlan, isWorker, teamMembers, teamPlan, teamSpaceState, teamFixPlan, AGENT_KINDS, FREE_NAME, FREE_SPACE, SHELL_KIND } from "./actions.js";
 import { P, STATE, dot, platformIcon, answeredView } from "./common.js";
@@ -204,7 +205,7 @@ export class PanelPart {
   // hc's list (the terminals with no pane are only there): read every 5 s while the panel is open, from a timer (never in a render).
   // ★95-14: the search input (a retained InputState) is made in a task too — InputState.new throws when it is called during a draw.
   panelPoll(cx) {
-    if (!this.psearch) cx.spawn(async (cx) => { try { this.psearch ??= InputState.new({ placeholder: "Search…" }); cx.notify(); } catch {} });
+    if (!this.psearch) cx.spawn(async (cx) => { try { this.psearch ??= InputState.new({ placeholder: "Search name, folder, state…" }); cx.notify(); } catch {} });
     // ★105 N6/N3: every call reads at once (opening the panel always refreshes); the 5 s timer is made once. termPanel also re-reads when the list is older than 7 s (panelStale),
     // so a timer that stopped can no longer leave the left list with the pane terminals only (the workers with no pane never showed).
     if (!this.panelTimer) this.panelTimer = cx.timer.every(5000, (cx) => { if (this.panelOpen()) cx.spawn(async (cx) => this.panelRead(cx)); });
@@ -386,7 +387,9 @@ export class PanelPart {
       if (r.kind === "space") groups.push({ head: r, terms: [] });
       else { if (!groups.length) groups.push({ head: null, terms: [] }); groups[groups.length - 1].terms.push(r); }
     }
-    const shown = groups.map((g) => ({ ...g, terms: q ? g.terms.filter((t) => String(t.label).toLowerCase().includes(q) || String(g.head?.label ?? "").toLowerCase().includes(q)) : g.terms })).filter((g) => !q || g.terms.length);
+    // every word typed must be found in the row: name, room, folder, CLI, model or state (search-rules.js)
+    const toks = searchTokens(q), agOf = (t) => (list ?? []).find((x) => x.address === t.address) ?? null;
+    const shown = groups.map((g) => ({ ...g, terms: q ? g.terms.filter((t) => hayMatches(toks, rowHay(t, agOf(t), g.head?.label ?? ""))) : g.terms })).filter((g) => !q || g.terms.length);
     const color = (s) => STATE[s]?.color ?? paint("#b8b2a6"), W = this.leftW ?? PANEL_W, hover = this.panelHover;
     const hoverOn = (key) => (h, cx2) => { if (h) { if (this.panelHover !== key) { this.panelHover = key; cx2.notify(); } } else if (this.panelHover === key) { this.panelHover = null; cx2.notify(); } };
     // ★95-8 while a row is dragged: the spaces it may be dropped on are tinted, the one under the pointer is blue; elsewhere nothing happens and nothing is tinted
@@ -495,6 +498,10 @@ export class PanelPart {
       .child(div().id("pn-new-space").flex_none().h(UI.hit).px(10).gap(8).flex().items_center().justify_center().rounded(8).border(1).border_color(P.line).bg(paint("#ffffff")).cursor_pointer().hover((s) => s.bg(paint("#f3efe4")))
         .on_mouse_down("left", stop).on_click((_e, cx2) => { cx2.stop_propagation(); this.newSpaceStart(cx2); })
         .child(icon("room-add", 16, P.ink)).child(div().text_size(TXT.small).font_weight(700).text_color(P.ink).child("New space")))
+      // One instruction to several agents (keys.js openBroadcast): the list opens with the search's hits ticked when something is typed
+      .child(div().id("pn-broadcast").flex_none().h(UI.hit).px(10).gap(8).flex().items_center().justify_center().rounded(8).border(1).border_color(P.line).bg(paint("#ffffff")).cursor_pointer().hover((s) => s.bg(paint("#f3efe4")))
+        .on_mouse_down("left", stop).on_click((_e, cx2) => { cx2.stop_propagation(); this.openBroadcast(list ?? [], q ? shown.flatMap((g) => g.terms.map((t) => agOf(t)?.id)).filter((x) => x != null) : null); })
+        .child(icon("chat", 16, P.ink)).child(div().text_size(TXT.small).font_weight(700).text_color(P.ink).child("Message several…")))
       // ★95-8 the picked row follows the pointer (a small chip beside it, so it never sits under the pointer)
       .when(!!this.pdrag?.label, (e) => e.child(div().absolute().left((this.pdrag.x ?? 0) + 12).top((this.pdrag.y ?? 0) - 8 + 8).px(8).py(3).rounded(6).bg(paint("#ffffff")).border(1).border_color(P.blue).shadow_md().text_size(TXT.small).text_color(P.ink).child(ellipsize(String(this.pdrag.label), 16))))
       .child(splitHandle("left-split", (e, cx2) => { this.resizeStart("left", e.position.x); cx2.notify(); }, this.resize?.side === "left").right(-3))

@@ -7,6 +7,7 @@
     "alt-r": "hakoniwa.reject",
     "alt-shift-a": "hakoniwa.approve-all",
     "alt-t": "hakoniwa.tab",
+    "alt-b": "hakoniwa.broadcast",
     "alt-i": "hakoniwa.inbox",
     "alt-x": "hakoniwa.close"
   }

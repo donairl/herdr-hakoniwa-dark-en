@@ -86,6 +86,7 @@ taken away from whatever you are typing to an agent.
 | `alt-a` / `alt-r` | approve / reject what the chosen agent asks. With nobody chosen it only chooses the first one who waits, so nothing is ever answered unseen |
 | `alt-shift-a` | "Approve requests": a list of every request that can be answered from the office |
 | `alt-t` | the right window: Terminal ↔ Chat |
+| `alt-b` | "Message several agents": one instruction to the agents you tick |
 | `alt-i` | open / close the inbox |
 | `alt-x` | close the right window and the popups |
 
@@ -93,6 +94,17 @@ taken away from whatever you are typing to an agent.
 whole question. Switch off a kind ("Bash command", "Edit file") or single rows, then press "Approve N". Each agent is approved only
 if its screen still shows exactly the question that was listed: one that has moved on to another question is left alone. Agents of
 T3 Code and herdr TUI, and screens that cannot be read, are never in the list.
+
+**Search** (the box over the left list): every word you type must be found in the row — its name, room, folder, CLI, model or
+state. `claude blocked` shows the Claude agents that wait; `api idle` the idle ones in a folder or room named "api".
+
+**Message several agents** (`alt-b`, or "Message several…" under the left list) sends one instruction to every agent you tick;
+"Everybody" and a chip per room tick many at once, and a search typed in the left list is ticked already. An agent that waits for
+an answer is never written to (the text would land in its permission question): it is greyed out, and each screen is checked again
+right before sending.
+
+**Presets** (the "New agent" window): "+ Save current" keeps the provider, model, effort, folder and first instruction under a name
+(the display name if you typed one). A press on a preset fills the window again; nothing starts before "Start agent".
 
 **Notifications**: when an agent starts to wait for you or brings a report while the Herdr window is not in front, the office asks
 the system to show a notification (`office.notify` in `config.json`; `"when": "always"` shows them every time, `"enabled": false` never).
