@@ -320,7 +320,7 @@ export class ChatPart {
     const vp = vpSize();
     const vw = vp?.width > 0 ? vp.width : left.width + 268, vh = vp?.height > 0 ? vp.height : left.height + 60; // the window's real size (the office's own size + the sidebar only as a fallback)
     const colW = !!this.rightCollapsed, bx = rightOverlayBox(vw, vh, 60, colW ? RIGHT_COLLAPSED_W : (this.rightW ?? Math.round(left.width * 0.46)), this.rightW ? 0.6 : 0.4, RIGHT_EDGE), W0w = colW ? RIGHT_COLLAPSED_W : bx.width; let W = W0w, H = Math.min(bx.height, Math.max(240, Math.round(left.height))); // ★103-3 attached; ★103-4 folded
-    if (this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "chat"; } // ★84 another person: the first tab again; ★106 V1: the conversation
+    if (this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "terminal"; } // ★84 another person: the first tab again; ★110: the terminal first (Chat when the person has no real terminal)
     const kidsN0 = this.familyRows(want, list).length - 1, full = !colW && tabFor(this.detailTab, true, kidsN0) === "terminal" && termFullOn(shared);
     if (full) { W = Math.round(vw); H = Math.round(vh); }
     const kidsN = kidsN0, tab = tabFor(this.detailTab, true, kidsN), topH = headHeight(W), ap = tab === "chat" && want.status === "blocked", apH = ap ? this.apHold(want.id, W, this.apNeed(want, W)) : (this.apHold(null), 0), sig = `${want.id}|${want.address}|${topH}|${tab}|${W}|${H}|${colW}|${full}|${ap ? "ap" + apH : ""}`; // 13th D1: ap = a person waiting for approval gets a card block above the input (the window is opened again when it starts / ends) // ★84 the head is a fixed height from the width; the tab is in the key (the window is opened again)

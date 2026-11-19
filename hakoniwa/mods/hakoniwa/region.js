@@ -29,7 +29,7 @@ export class RegionPart {
     if (!this.regionEnabled(cx)) { if (this.regionShown) this.regionStop(cx); return false; }
     const target = want ? { kind: "agent", id: want.id, address: want.address, name: want.name } : pick ? { kind: "pick", address: pick.address, name: pick.name ?? pick.address }
       : shared("hakoniwa.inboxOpen")?.on ? { kind: "inbox", name: "Inbox" } : null; // ★106 ②: nobody chosen + the inbox asked for (chips 承認待ち / 報告あり)
-    if (want && this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "chat"; } // ★106 V1 (J7): the conversation first; the terminal only when its tab is pressed
+    if (want && this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "terminal"; } // ★110: the terminal first; Chat only when its tab is pressed (a person with no real terminal falls back to Chat)
     const tab = want ? tabFor(this.detailTab, true, this.familyRows(want, list).length - 1) : "terminal";
     const plan = regionPlan({ target, tab, collapsed: !!this.rightCollapsed, viewW: left.width, rightW: this.rightW, topH: headHeight(this.rightW ?? Math.round(left.width * 0.3)) });
     if (this.resize && this.regionShown) return true; // a drag of the border: resized live (regionResize), the plan runs once when it ends
